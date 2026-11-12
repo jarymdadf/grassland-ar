@@ -18,8 +18,9 @@ window.THREE = THREE; // the 8th Wall engine uses window.THREE
 const params = new URLSearchParams(location.search);
 const FORCED = params.get('mode');
 const EYE_H = THREE.MathUtils.clamp(parseFloat(params.get('h')) || 1.35, 0.8, 2.0); // device height above the floor in AR (m)
-const XR_SCALE = params.get('scale') === 'absolute' ? 'absolute' : 'responsive';
+const XR_SCALE = params.get('scale') === 'responsive' ? 'responsive' : 'absolute';   // absolute: real metres (8th Wall estimates the device height)
 const TEST = params.has('test');
+const DPR_MAX = parseFloat(params.get('dpr')) || 3;            // render at the screen's full resolution (up to 3x)
 const XR8_SRC = 'https://cdn.jsdelivr.net/npm/@8thwall/engine-binary@1/dist/xr.js';
 
 // ---------------- photo camera model (shared by the 2D pictures and the 3D scene) ----------------
@@ -28,7 +29,9 @@ const Y0 = 297;                           // horizon row in the pictures
 const F = IMG_W / Math.PI;                // 180° cylindrical panorama → pixels per radian
 const H0 = 0.9;                           // camera height of the photo (m), estimated from the size of the daisies (≈5 cm)
 const R_BG = 25;                          // distance of the backdrop (m); ground and backdrop meet exactly there
-const R_IN = 0.55, VEG_MAX = 8;           // 3D grass and flowers from 0.55 m to 8 m; beyond that the photo ground is enough
+const R_IN = 0.55, VEG_MAX = 8;           // 3D flowers from 0.55 m to 8 m (all flowers detected in the photo lie within 8 m)
+const GRASS_MAX = 16;                     // 3D grass from 0.55 m to 16 m; beyond that the (sharpened) photo ground
+const HR_ROWS = 420;                      // top rows of the pictures (sky, horizon, far field) also loaded 3x sharper (AI super-resolution)
 const PRODUCT_LEVEL = 3, LV = [1, 3, 5];
 const SEED = 20261110;                    // fixed seed: every participant sees exactly the same scene
 const START_X = 1450;                     // same start view as the 2D prototype
@@ -66,6 +69,21 @@ function sample(data, x, y) {          // photo colour at picture pixel (x, y); 
   const xi = Math.max(0, Math.min(IMG_W - 1, Math.round(x))), yi = Math.max(0, Math.min(IMG_H - 1, Math.round(y)));
   const i = (yi * IMG_W + xi) * 4; return _c.setRGB(data.data[i] / 255, data.data[i + 1] / 255, data.data[i + 2] / 255, THREE.SRGBColorSpace).clone();
 }
+const photoTex = [];
+function prepTextures(renderer) {   // WebGL1 cannot build mipmaps for these picture sizes: sample them directly instead of shrinking them
+  if (renderer.capabilities.isWebGL2) return;
+  photoTex.forEach(t => { t.generateMipmaps = false; t.minFilter = THREE.LinearFilter; t.needsUpdate = true; });
+}
+function detailTexture() {           // tileable fine grass texture (grey, around mid-grey): adds sharp detail to the ground near the viewer
+  const N = 256, c = document.createElement('canvas'); c.width = c.height = N; const g = c.getContext('2d'); const r = mulberry32(11);
+  g.fillStyle = '#808080'; g.fillRect(0, 0, N, N); g.lineCap = 'round';
+  for (let i = 0; i < 2600; i++) {
+    const x = r() * N, y = r() * N, len = 4 + r() * 14, ang = -Math.PI / 2 + (r() - 0.5) * 1.6, v = r() < 0.5 ? 40 + r() * 50 : 170 + r() * 60;
+    g.strokeStyle = `rgba(${v | 0},${v | 0},${v | 0},${0.35 + r() * 0.4})`; g.lineWidth = 0.8 + r() * 1.4;
+    for (const ox of [-N, 0, N]) for (const oy of [-N, 0, N]) { g.beginPath(); g.moveTo(x + ox, y + oy); g.lineTo(x + ox + Math.cos(ang) * len, y + oy + Math.sin(ang) * len); g.stroke(); }
+  }
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8; return t;
+}
 function skyColour(data) {             // average colour of the top rows of the photo (the sky continues above the picture with it)
   let r = 0, g = 0, b = 0, n = 0;
   for (let y = 0; y < 14; y++) for (let x = 0; x < IMG_W; x += 4) { const i = (y * IMG_W + x) * 4; r += data.data[i]; g += data.data[i + 1]; b += data.data[i + 2]; n++; }
@@ -78,15 +96,26 @@ const U = { uFrom: { value: new THREE.Vector3(0, 1, 0) }, uTo: { value: new THRE
 
 // ---------------- photo ground and backdrop ----------------
 const photoFrag = () => /* glsl */`
-  uniform sampler2D tG1, tG3, tG5, tP1, tP3, tP5; uniform vec3 uFrom, uTo; uniform float uT, uEdge; uniform vec3 uSky;
+  uniform sampler2D tG1, tG3, tG5, tP1, tP3, tP5, tH1, tH3, tH5; uniform vec3 uFrom, uTo; uniform float uT, uEdge; uniform vec3 uSky;
+  vec3 lvl(sampler2D a, sampler2D b, sampler2D c, vec2 uv, vec3 w) {   // level cross-fade; textures with weight 0 are not read
+    vec3 r = vec3(0.0);
+    if (w.x > 0.001) r += texture2D(a, uv).rgb * w.x;
+    if (w.y > 0.001) r += texture2D(b, uv).rgb * w.y;
+    if (w.z > 0.001) r += texture2D(c, uv).rgb * w.z;
+    return r;
+  }
   vec3 pick(vec2 uv, float d) {
     vec3 w = mix(uFrom, uTo, smoothstep(0.0, 1.0, uT));
-    vec3 g = texture2D(tG1, uv).rgb * w.x + texture2D(tG3, uv).rgb * w.y + texture2D(tG5, uv).rgb * w.z;
-    vec3 p = texture2D(tP1, uv).rgb * w.x + texture2D(tP3, uv).rgb * w.y + texture2D(tP5, uv).rgb * w.z;
-    return mix(g, p, smoothstep(${VEG_MAX.toFixed(1)}, ${(VEG_MAX + 2).toFixed(1)}, d));   // near: flowers are 3D, so use the flower-free photo
+    float yi = (1.0 - uv.y) * ${IMG_H}.0;
+    float f = smoothstep(${VEG_MAX.toFixed(1)}, ${(VEG_MAX + 2).toFixed(1)}, d);   // near: flowers are 3D, so use the flower-free photo
+    vec3 g = f < 0.999 ? lvl(tG1, tG3, tG5, uv, w) : vec3(0.0);
+    vec3 p = vec3(0.0);
+    if (f > 0.001) p = yi < ${(HR_ROWS - 2).toFixed(1)} ? lvl(tH1, tH3, tH5, vec2(uv.x, 1.0 - yi / ${HR_ROWS}.0), w) : lvl(tP1, tP3, tP5, uv, w);
+    return mix(g, p, f);
   }
   float sideFade(float az) { return 1.0 - smoothstep(uEdge, 1.5708, abs(az)); }`;
-function photoUniforms(tex) { return { ...U, tG1: { value: tex.g1 }, tG3: { value: tex.g3 }, tG5: { value: tex.g5 }, tP1: { value: tex.p1 }, tP3: { value: tex.p3 }, tP5: { value: tex.p5 } }; }
+function photoUniforms(tex) { return { ...U, tG1: { value: tex.g1 }, tG3: { value: tex.g3 }, tG5: { value: tex.g5 }, tP1: { value: tex.p1 }, tP3: { value: tex.p3 }, tP5: { value: tex.p5 },
+  tH1: { value: tex.h1 }, tH3: { value: tex.h3 }, tH5: { value: tex.h5 }, tDet: { value: tex.det } }; }
 function buildPhotoScene(tex) {
   // ground: every pixel looks up where it appears in the photo
   const groundGeo = new THREE.RingGeometry(R_IN - 0.15, R_BG, 240, 90, -0.05, Math.PI + 0.1); groundGeo.rotateX(-Math.PI / 2);
@@ -94,7 +123,7 @@ function buildPhotoScene(tex) {
     uniforms: photoUniforms(tex), transparent: true, depthWrite: false,
     vertexShader: /* glsl */`varying vec3 vL; void main(){ vL = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
     fragmentShader: photoFrag() + /* glsl */`
-      varying vec3 vL;
+      varying vec3 vL; uniform sampler2D tDet;
       void main(){
         float az = atan(vL.x, -vL.z); float d = length(vL.xz);
         float x = ${(IMG_W / 2).toFixed(1)} + az * ${F.toFixed(4)};
@@ -102,7 +131,10 @@ function buildPhotoScene(tex) {
         if (y > ${IMG_H - 1}.0) { float k = mod(y - ${IMG_H - 1}.0, 300.0); y = ${IMG_H - 1}.0 - (k < 150.0 ? k : 300.0 - k); }
         vec2 uv = vec2(x / ${IMG_W}.0, 1.0 - y / ${IMG_H}.0);
         float a = smoothstep(${(R_IN - 0.15).toFixed(2)}, ${(R_IN + 0.15).toFixed(2)}, d) * sideFade(az);
-        gl_FragColor = vec4(pick(uv, d), a);
+        // fine grass detail on the ground near the viewer (the photo alone is too coarse at close range); colours stay the photo's
+        float det = texture2D(tDet, vL.xz / 0.55).r * 0.6 + texture2D(tDet, vL.xz / 0.17 + 0.37).r * 0.4;
+        float k = 0.55 * (1.0 - smoothstep(4.0, 14.0, d));
+        gl_FragColor = vec4(pick(uv, d) * (1.0 + k * (det - 0.5)), a);
         #include <colorspace_fragment>
       }`
   });
@@ -148,21 +180,22 @@ function buildGrass(img) {
     });
   };
   // fewer and lower blades towards the viewer, the far end and the two side edges (the edges fade into the room in AR)
-  const edge = (az, d) => Math.min(smooth(Math.min(1, (d - R_IN) / 0.35)), smooth(Math.max(0, Math.min(1, (90 * D2R - Math.abs(az)) / (10 * D2R)))), smooth(Math.min(1, (VEG_MAX - d) / 2)));
-  const logD = () => R_IN * Math.pow(VEG_MAX / R_IN, Math.pow(rand(), 1.15));
+  const edge = (az, d) => Math.min(smooth(Math.min(1, (d - R_IN) / 0.35)), smooth(Math.max(0, Math.min(1, (90 * D2R - Math.abs(az)) / (10 * D2R)))), smooth(Math.min(1, (GRASS_MAX - d) / 4)));
+  const logD = () => R_IN * Math.pow(GRASS_MAX / R_IN, Math.pow(rand(), 1.15));
+  const wide = (d) => 1 + Math.max(0, d - 3) * 0.12;   // distant blades a little wider, so they do not flicker below one pixel
   // base sward everywhere (short where mown, medium where unmown)
-  for (let i = 0; i < 46000; i++) {
+  for (let i = 0; i < 62000; i++) {
     const az = rr(-90, 90) * D2R, d = logD(), e = edge(az, d); if (rand() > 0.15 + 0.85 * e) continue;
     const { x, y } = toImg(az, d);
     const hs = LV.map(lv => (TALL[lv](x, y) ? rr(0.12, 0.26) : (lv === 1 ? rr(0.025, 0.05) : rr(0.03, 0.06))) * (0.5 + 0.5 * e));
-    add(az, d, hs, 0.6, rr(0.006, 0.011), rr(0.05, 0.35), rr(-0.15, 0.15));
+    add(az, d, hs, 0.6, rr(0.006, 0.011) * wide(d), rr(0.05, 0.35), rr(-0.15, 0.15));
   }
   // tall grasses where the pictures show unmown vegetation (they disappear when mown)
-  for (let i = 0, n = 0; i < 60000 && n < 7000; i++) {
+  for (let i = 0, n = 0; i < 90000 && n < 10000; i++) {
     const az = rr(-90, 90) * D2R, d = logD(); const { x, y } = toImg(az, d); if (!TALL[5](x, y)) continue;
     const e = edge(az, d) * smooth(Math.min(1, (d - R_IN) / 1.0)); if (rand() > e) continue; n++;   // fewer tall stems right in front of the viewer
     const t = rr(0.25, 0.5) * (0.6 + 0.4 * e);
-    add(az, d, LV.map(lv => (TALL[lv](x, y) ? t : 0)), 0.45, rr(0.004, 0.008), rr(0.1, 0.4), rr(-0.15, 0.15));
+    add(az, d, LV.map(lv => (TALL[lv](x, y) ? t : 0)), 0.45, rr(0.004, 0.008) * wide(d), rr(0.1, 0.4), rr(-0.15, 0.15));
   }
   const geo = new THREE.InstancedBufferGeometry();
   { const ys = [0, 0.25, 0.5, 0.75], pos = [], idx = []; ys.forEach(y => pos.push(-0.5, y, 0, 0.5, y, 0)); pos.push(0, 1, 0);
@@ -501,7 +534,7 @@ function tick(cam) {
 function freshCanvas() {   // each display mode gets its own canvas (a canvas keeps the graphics context it was first used with)
   const old = $('#gl'), cv = document.createElement('canvas'); cv.id = 'gl'; old.replaceWith(cv); return cv;
 }
-const dpr = () => Math.min(window.devicePixelRatio || 1, 2);
+const dpr = () => Math.min(window.devicePixelRatio || 1, DPR_MAX);
 
 // ================= display mode 1: 8th Wall engine (camera, 6DoF world tracking) =================
 let xr8Promise = null;
@@ -543,7 +576,7 @@ async function runXR8() {
           name: 'grassland',
           onStart: () => {
             const { scene, camera, renderer } = XR8.Threejs.xrScene();
-            renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.NoToneMapping;
+            renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.NoToneMapping; prepTextures(renderer);
             root.rotation.y = YAW0;                 // the direction the participant faces at Start = start view of the 2D prototype
             scene.add(root);
             camera.position.set(0, EYE_H, 0); camera.quaternion.identity();
@@ -578,7 +611,7 @@ async function runWebXR() {
   const renderer = new THREE.WebGLRenderer({ canvas: cv, antialias: true, alpha: true });
   renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.NoToneMapping;
   renderer.setPixelRatio(dpr()); renderer.setSize(window.innerWidth, window.innerHeight, false);
-  renderer.xr.enabled = true; renderer.xr.setReferenceSpaceType('local-floor');   // y = 0 is the real floor
+  renderer.xr.enabled = true; renderer.xr.setReferenceSpaceType('local-floor'); prepTextures(renderer);   // y = 0 is the real floor
   let session;
   try { session = await navigator.xr.requestSession('immersive-ar', { requiredFeatures: ['local-floor'], optionalFeatures: ['dom-overlay'], domOverlay: { root: sceneEl } }); }
   catch (err) { console.warn('webxr', err); renderer.dispose(); return { ok: false, why: String(err.message || err) }; }
@@ -609,7 +642,7 @@ async function runOrient() {
   video.srcObject = stream; sceneEl.prepend(video); try { await video.play(); } catch (_) {}
   const cv = freshCanvas();
   const renderer = new THREE.WebGLRenderer({ canvas: cv, antialias: true, alpha: true }); renderer.setClearColor(0x000000, 0);
-  renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.NoToneMapping; renderer.setPixelRatio(dpr());
+  renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.NoToneMapping; renderer.setPixelRatio(dpr()); prepTextures(renderer);
   const scene = new THREE.Scene(), camera = new THREE.PerspectiveCamera(50, 1, 0.01, 300), rig = new THREE.Group();
   rig.add(camera); scene.add(rig); camera.position.set(0, 0, 0); rig.position.set(0, EYE_H, 0);
   root.rotation.y = YAW0; scene.add(root);
@@ -633,7 +666,7 @@ let pYaw = YAW0, pPitch = -4.3 * D2R;
 function runPreview() {
   const cv = freshCanvas();
   const renderer = new THREE.WebGLRenderer({ canvas: cv, antialias: true });
-  renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.NoToneMapping; renderer.setPixelRatio(dpr());
+  renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.NoToneMapping; renderer.setPixelRatio(Math.min(dpr(), 2)); prepTextures(renderer);
   renderer.setClearColor(TEST ? 0xff00ff : 0x132f20, 1);
   const scene = new THREE.Scene(), camera = new THREE.PerspectiveCamera(55, 1, 0.01, 300);
   root.rotation.y = 0; scene.add(root); U.uEdge.value = EDGE_PREVIEW;
@@ -641,7 +674,7 @@ function runPreview() {
   // the view is limited so that the screen never shows anything beyond the scene (sides, under the feet, above the sky)
   const _r = new THREE.Vector3(), CORNERS = [[-1, -1], [1, -1], [-1, 1], [1, 1], [-1, 0], [1, 0], [0, -1], [0, 1]];
   const EL_MIN = -Math.atan2(H0, R_IN + 0.25), EL_MAX = SKY_FADE[0] - 4 * D2R, AZ_MAX = EDGE_PREVIEW - 0.003;
-  const aim = () => { camera.lookAt(Math.sin(pYaw) * Math.cos(pPitch), H0 + Math.sin(pPitch), -Math.cos(pYaw) * Math.cos(pPitch)); camera.updateMatrixWorld(); };
+  const aim = () => { const cy = camera.position.y; camera.lookAt(Math.sin(pYaw) * Math.cos(pPitch), cy + Math.sin(pPitch), -Math.cos(pYaw) * Math.cos(pPitch)); camera.updateMatrixWorld(); };
   const extent = () => { let azMin = 9, azMax = -9, elMin = 9, elMax = -9;
     for (const [x, y] of CORNERS) { _r.set(x, y, 0.5).unproject(camera).sub(camera.position).normalize(); const az = Math.atan2(_r.x, -_r.z), el = Math.asin(_r.y);
       azMin = Math.min(azMin, az); azMax = Math.max(azMax, az); elMin = Math.min(elMin, el); elMax = Math.max(elMax, el); }
@@ -666,6 +699,7 @@ function runPreview() {
     if (e.key === 'Escape') closeCard(); clampView();
   });
   renderer.setAnimationLoop(() => { renderer.render(scene, camera); tick(camera); });
+  window.__ar3d.setCam = (h, fov) => { camera.position.y = h; camera.fov = fov; camera.updateProjectionMatrix(); aim(); };   // test only: simulate an AR viewpoint
   window.__ar3d.setView = (yaw, pitch) => { pYaw = yaw; pPitch = pitch; clampView(); return { yaw: pYaw, pitch: pPitch, ...extent() }; };
   return { ok: true };
 }
@@ -740,14 +774,16 @@ window.__ar3d = { finish: () => { tAnim = 0.999; }, setLevel: (lv) => { record('
   if (!FORCED || FORCED === 'xr8') loadXR8();   // start downloading the AR engine while the grassland loads
   $('#iosNote').hidden = !(isIOS && !isStandalone());
   try {
-    const [g1, g3, g5, p1, p3, p5, gi1, gi3, gi5, flowers, prof, wingInfo, bee, wing, bfly, lark] = await Promise.all([
+    const [g1, g3, g5, p1, p3, p5, h1, h3, h5, gi1, gi3, gi5, flowers, prof, wingInfo, bee, wing, bfly, lark] = await Promise.all([
       loadTex('assets/ground_L1.jpg'), loadTex('assets/ground_L3.jpg'), loadTex('assets/ground_L5.jpg'),
       loadTex('assets/pano_L1.jpg'), loadTex('assets/pano_L3.jpg'), loadTex('assets/pano_L5.jpg'),
+      loadTex('assets/hr_L1.jpg'), loadTex('assets/hr_L3.jpg'), loadTex('assets/hr_L5.jpg'),
       loadImg('assets/ground_L1.jpg'), loadImg('assets/ground_L3.jpg'), loadImg('assets/ground_L5.jpg'),
       fetch('assets/flowers.json').then(r => r.json()), fetch('assets/profiles.json').then(r => r.json()), fetch('assets/bee_wing.json').then(r => r.json()),
       loadTex('assets/bee.png'), loadTex('assets/bee_wing.png'), loadTex('assets/butterfly.png'), loadTex('assets/skylark.png')]);
     const d3 = imageData(gi3); U.uSky.value.copy(skyColour(d3));
-    buildPhotoScene({ g1, g3, g5, p1, p3, p5 });
+    photoTex.push(g1, g3, g5, p1, p3, p5, h1, h3, h5);
+    buildPhotoScene({ g1, g3, g5, p1, p3, p5, h1, h3, h5, det: detailTexture() });
     buildGrass({ g1: imageData(gi1), g3: d3, g5: imageData(gi5) });
     buildFlowers(flowers); updateFlowers(wFrom, wTo, 1);
     buildAnimals(prof, { bee, wing, bfly, lark }, wingInfo);

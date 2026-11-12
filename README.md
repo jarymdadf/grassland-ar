@@ -15,7 +15,7 @@ The approved 2D prototype pictures (levels 1, 3 and 5) are turned into a 3D gras
 
 The mode that ran is written into the tap log (researcher view: tap the "explored" counter three times).
 
-Test options in the address: `?mode=preview` (or `xr8`, `webxr`, `orient`) forces a mode; `?h=1.35` sets the device height above the floor in metres (default 1.35); `?scale=absolute` uses 8th Wall's absolute scale.
+Test options in the address: `?mode=preview` (or `xr8`, `webxr`, `orient`) forces a mode; `?scale=responsive` uses 8th Wall's responsive scale with an assumed device height (`?h=1.35`, metres) instead of the default absolute scale (real metres); `?dpr=2` lowers the rendering resolution if a device is too slow.
 
 ## Full screen
 - Android: tapping Start switches to full screen and landscape.
@@ -24,9 +24,10 @@ Test options in the address: `?mode=preview` (or `xr8`, `webxr`, `orient`) force
 ## Files
 - `index.html`, `styles.css`, `app3d.js` – the experience
 - `manifest.webmanifest`, `icons/` – Home Screen web app
-- `assets/` – pictures, species images and scene data
+- `assets/` – pictures, species images and scene data. `hr_L1/3/5.jpg` are the top 420 rows (sky, horizon, far field) of the approved pictures, enlarged 3x with AI super-resolution (Real-ESRGAN general-wdn-x4v3, run at 4x then reduced to 3x), because in AR the camera's field of view (~65°) shows the picture about twice as large as the 2D prototype did
 - `lib/three.module.min.js` – three.js 0.160.0 (MIT licence)
 
 ## Third-party software
 - AR tracking: 8th Wall Engine (distributed engine binary), © 2026 Niantic Spatial, Inc. Loaded from https://cdn.jsdelivr.net/npm/@8thwall/engine-binary@1/dist/xr.js and used under the XR Engine License Agreement: https://github.com/8thwall/engine/blob/main/LICENSE. Provided "as is", without warranty. This project is not connected with or endorsed by Niantic Spatial.
 - three.js 0.160.0, © three.js authors, MIT licence.
+- Real-ESRGAN (Wang et al., 2021), BSD-3-Clause licence: model realesr-general-wdn-x4v3, used offline to enlarge the pictures.
