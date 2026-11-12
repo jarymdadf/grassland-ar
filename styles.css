@@ -519,3 +519,27 @@ body.debug .exploration-status { top: calc(max(10px, env(safe-area-inset-top)) +
 @keyframes nudge { 0%,100% { translate: 0 -50%; } 50% { translate: -4px -50%; } }
 @keyframes nudgeR { 0%,100% { translate: 0 -50%; } 50% { translate: 4px -50%; } }
 .ar-hint { max-width: min(420px, 52vw); }
+
+/* ================= v9: markers are HTML buttons (what is seen is what is tapped) ================= */
+.marker-lines { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 7; pointer-events: none; overflow: visible; }
+.mk-line { stroke: rgba(255,255,255,.92); stroke-width: 1.6; stroke-linecap: round; filter: drop-shadow(0 0 1px rgba(10,30,15,.55)); }
+.marker-layer { position: absolute; inset: 0; z-index: 8; pointer-events: none; overflow: hidden; --mk-h: 32px; }
+.mk { position: absolute; left: 0; top: 0; display: inline-flex; align-items: center; gap: calc(var(--mk-h) * .22);
+  height: var(--mk-h); margin: calc(var(--mk-h) * -.5) 0 0 calc(var(--mk-h) * -.5); padding: 0 calc(var(--mk-h) * .4) 0 0;
+  border: 0; border-radius: 999px; background: rgba(250,250,242,.96); color: #183e2a; white-space: nowrap;
+  font: 800 calc(var(--mk-h) * .42)/1 system-ui, -apple-system, "Segoe UI", sans-serif; letter-spacing: .005em;
+  box-shadow: 0 4px 12px rgba(10,32,18,.30); pointer-events: auto; cursor: pointer; will-change: transform;
+  -webkit-tap-highlight-color: transparent; touch-action: manipulation; transition: background .2s ease, color .2s ease, scale .12s ease; }
+.mk::before { content: ""; position: absolute; inset: -7px -5px; border-radius: 999px; }   /* larger tap area than what is drawn */
+.mk:active { scale: .95; }
+.mk.is-off { visibility: hidden; pointer-events: none; }
+.mk-dot { position: relative; flex: 0 0 var(--mk-h); width: var(--mk-h); height: var(--mk-h); box-sizing: border-box; border-radius: 50%;
+  border: calc(var(--mk-h) * .17) solid #fff; background: #2f6945; box-shadow: 0 0 0 1px rgba(24,62,42,.18); }
+.mk-dot::after { content: ""; position: absolute; inset: calc(var(--mk-h) * -.3); border: 2px solid rgba(255,255,255,.9); border-radius: 50%;
+  animation: pulse 2.2s ease-out infinite; pointer-events: none; }
+.mk-check { display: none; color: #4f8a45; font-size: 1.05em; }
+.mk.is-seen .mk-dot { background: #8fbf6f; }
+.mk.is-seen .mk-dot::after { display: none; }
+.mk.is-seen .mk-check { display: inline; }
+.mk.is-active { background: #183e2a; color: #f4f7ee; }
+.mk.is-active .mk-check { color: #bfe0a8; }

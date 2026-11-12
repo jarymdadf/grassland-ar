@@ -293,7 +293,6 @@ const AR_LAYOUT = {
        butterfly: { az: 55, d: 2.6 }, hedge: { x: 1960, y: 225 } }
 };
 const MARKER_H = 0.7;                      // markers float this high above the ground (m), with a thin line down to the object
-const MARKER_PX = 26;                      // marker height on screen (CSS pixels), the same at every distance
 
 function loftGeometry(prof, lengthM, depthRatio) {   // rounded 3D body from the outline of the side-view picture, coloured by that picture
   const W = prof.w, H = prof.h; let cols = prof.cols.filter(c => c[1] !== null);
@@ -414,45 +413,30 @@ const $ = (s) => document.querySelector(s);
 const sceneEl = $('#scene');
 const hotspotCard = $('#hotspotCard'), seenCount = $('#seenCount'), badge = $('#badge'), productPill = $('#productPill'), levelLine = $('#levelLine');
 
-// ---------------- markers: part of the 3D scene (they move exactly with the landscape), constant size on screen ----------------
-// Each marker = a dot with its label, a pulsing ring (until visited) and a thin line down to its object.
-// Species markers follow their animal. Labels never overlap: a marker that would cover another one is lifted until it is free.
+// ---------------- markers (v9): HTML buttons placed every frame where their object is on screen ----------------
+// The marker that is seen IS the button that is tapped: the browser itself does the tap test, in every display mode.
+// Each marker = dot + label, with a thin line down to its object; pulsing ring until visited, ✓ after, dark while its card is open.
+// Species markers follow their animal. Labels never overlap: a marker that would cover a nearer one is lifted above it.
 const markers = [];
-const FONT = '700 30px system-ui, -apple-system, "Segoe UI", sans-serif';
-function drawMarker(m) {
-  const g = m.ctx, H = 64, r = 23, cx = 30, cy = H / 2;
-  g.clearRect(0, 0, m.canvas.width, H); g.font = FONT;
-  const tw = g.measureText(m.label).width + (m.seen ? 34 : 0);
-  g.fillStyle = m.active ? 'rgba(24,62,42,0.96)' : 'rgba(250,250,242,0.96)';
-  g.beginPath(); g.roundRect(cx + 2, cy - 22, r + 16 + tw + 14, 44, 22); g.fill();                                      // label pill
-  g.fillStyle = '#ffffff'; g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.fill();                                     // dot ring
-  g.fillStyle = m.seen ? '#8fbf6f' : '#2f6945'; g.beginPath(); g.arc(cx, cy, r - 7, 0, Math.PI * 2); g.fill();           // dot
-  g.fillStyle = m.active ? '#f4f7ee' : '#183e2a'; g.textBaseline = 'middle'; g.fillText(m.label, cx + r + 14, cy + 1);
-  if (m.seen) { g.font = '700 26px system-ui, sans-serif'; g.fillStyle = m.active ? '#bfe0a8' : '#4f8a45'; g.fillText('✓', cx + r + 14 + tw - 30, cy + 1); }
-  m.tex.needsUpdate = true;
-}
-const ringTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d');
-  g.strokeStyle = '#ffffff'; g.lineWidth = 5; g.beginPath(); g.arc(32, 32, 28, 0, Math.PI * 2); g.stroke();
-  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; })();
+const markerLayer = document.getElementById('markerLayer'), markerLines = document.getElementById('markerLines');
+const SVGNS = 'http://www.w3.org/2000/svg';
+let markerPx = 0;
+function markerState(m) { m.el.classList.toggle('is-seen', m.seen); m.el.classList.toggle('is-active', m.active); m.el.setAttribute('aria-pressed', String(m.active)); m.w = 0; }
 function makeMarker(lv, id, anchor, base, line, animal) {
   const label = OVERRIDES[lv]?.[id]?.label || LABEL[id];
-  const canvas = document.createElement('canvas'), ctx = canvas.getContext('2d'); ctx.font = FONT;
-  canvas.width = Math.ceil(30 + 23 + 16 + ctx.measureText(label).width + 34 + 20); canvas.height = 64;
-  const tex = new THREE.CanvasTexture(canvas); tex.colorSpace = THREE.SRGBColorSpace; tex.minFilter = THREE.LinearFilter; tex.generateMipmaps = false;
-  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, sizeAttenuation: false, depthTest: false, depthWrite: false, transparent: true }));
-  sprite.center.set(30 / canvas.width, 0.5); sprite.renderOrder = 21;
-  const ring = new THREE.Sprite(new THREE.SpriteMaterial({ map: ringTex, sizeAttenuation: false, depthTest: false, depthWrite: false, transparent: true }));
-  ring.renderOrder = 20;
-  const group = new THREE.Group(); group.add(ring, sprite); group.visible = false;
-  let lineObj = null;
-  if (line) {
-    const lg = new THREE.BufferGeometry(); lg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
-    lineObj = new THREE.Line(lg, new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9, depthTest: false })); lineObj.renderOrder = 19; lineObj.frustumCulled = false; group.add(lineObj);
-  }
-  root.add(group);
-  const m = { lv: Number(lv), id, label, canvas, ctx, tex, sprite, ring, line: lineObj, group, seen: false, active: false,
-    anchor: anchor.clone(), base: base.clone(), animal, lift: 0, phase: rand() * 2, rect: null, aspect: canvas.width / canvas.height };
-  drawMarker(m); markers.push(m);
+  const el = document.createElement('button'); el.type = 'button'; el.className = 'mk is-off'; el.dataset.id = id; el.dataset.level = String(lv);
+  el.innerHTML = '<span class="mk-dot" aria-hidden="true"></span><span class="mk-label"></span><span class="mk-check" aria-hidden="true">✓</span>';
+  el.querySelector('.mk-label').textContent = label;
+  markerLayer.appendChild(el);
+  let ln = null;
+  if (line) { ln = document.createElementNS(SVGNS, 'line'); ln.setAttribute('class', 'mk-line'); ln.style.visibility = 'hidden'; markerLines.appendChild(ln); }
+  const m = { lv: Number(lv), id, label, el, line: ln, seen: false, active: false, anchor: anchor.clone(), base: base.clone(), animal, lift: 0, w: 0, on: false, fresh: true };
+  m.follow = animal ? animal.g.position.clone() : null;   // species markers follow a smoothed position of their animal (calm, easy to tap)
+  el.addEventListener('pointerdown', () => { m.hold = true; });                   // a marker stays still while a finger is on it
+  const release = () => { setTimeout(() => { m.hold = false; }, 120); };
+  el.addEventListener('pointerup', release); el.addEventListener('pointercancel', release); el.addEventListener('pointerleave', release);
+  el.addEventListener('click', (e) => { e.stopPropagation(); openCard(m, e.clientX); });
+  markers.push(m);
 }
 function buildPins() {
   for (const lv of LV) for (const [id, L] of Object.entries(AR_LAYOUT[lv])) {
@@ -464,61 +448,60 @@ function buildPins() {
     else makeMarker(lv, id, world(L.az * D2R, L.d, 0), world(L.az * D2R, L.d, MARKER_H), true, null);
   }
 }
-const _w = new THREE.Vector3(), _a = new THREE.Vector3(), _inv = new THREE.Matrix4();
-function toScreen(local, cam, W, H) {            // picture-space point → screen pixels (same matrices as used for drawing)
-  _w.copy(local).applyMatrix4(root.matrixWorld).applyMatrix4(_inv); const depth = -_w.z;
-  _w.applyMatrix4(cam.projectionMatrix); return { x: (_w.x + 1) / 2 * W, y: (1 - _w.y) / 2 * H, depth, side: Math.sign(_w.x || 1) };
+const _w = new THREE.Vector3(), _b = new THREE.Vector3(), _inv = new THREE.Matrix4();
+let view = { x: 0, y: 0, w: 1, h: 1 };            // where the 3D picture is drawn, in page pixels relative to the scene
+function toScreen(local, cam) {                   // picture-space point → screen pixels (same matrices as used for drawing)
+  _w.copy(local).applyMatrix4(root.matrixWorld).applyMatrix4(_inv); const depth = -_w.z, side = Math.sign(_w.x || 1);   // side: left/right of the viewer (also when behind)
+  _w.applyMatrix4(cam.projectionMatrix);
+  return { x: view.x + (_w.x + 1) / 2 * view.w, y: view.y + (1 - _w.y) / 2 * view.h, depth, side };
 }
 const edgeL = document.getElementById('edgeLeft'), edgeR = document.getElementById('edgeRight');
-function updateMarkers(cam, dt, time) {
-  if (!cam) return;
+function updateMarkers(cam, dt) {
+  if (!cam || !markers.length) return;
   root.updateMatrixWorld(true); cam.updateMatrixWorld(); _inv.copy(cam.matrixWorld).invert();
-  const W = sceneEl.clientWidth || innerWidth, H = sceneEl.clientHeight || innerHeight, p11 = cam.projectionMatrix.elements[5] || 1;
-  const px = Math.min(40, Math.max(30, H * 0.072));          // marker height on screen: 30 px on phones, up to 40 px on tablets
-  const sy = 2 * px / (p11 * H);                             // sprite scale that gives that height at any distance
-  const vis = [];
-  let offL = false, offR = false;
+  const sb = sceneEl.getBoundingClientRect(), gl = document.getElementById('gl'), cr = gl ? gl.getBoundingClientRect() : sb;
+  view = cr.width > 0 && cr.height > 0 ? { x: cr.left - sb.left, y: cr.top - sb.top, w: cr.width, h: cr.height } : { x: 0, y: 0, w: sb.width, h: sb.height };
+  const W = sb.width, H = sb.height;
+  const px = Math.round(Math.min(40, Math.max(30, H * 0.072)));   // marker height: 30 px on phones, up to 40 px on tablets
+  if (px !== markerPx) { markerPx = px; markerLayer.style.setProperty('--mk-h', `${px}px`); markers.forEach(m => { m.w = 0; }); }
+  const vis = []; let offL = false, offR = false;
   for (const m of markers) {
-    m.group.visible = m.lv === curLevel; m.rect = null; if (!m.group.visible) continue;
-    if (m.animal) { m.anchorNow = _a.copy(m.animal.g.position).add(m.anchor).clone(); m.baseNow = m.animal.g.position.clone().add(m.base); }
-    else { m.anchorNow = m.anchor; m.baseNow = m.base; }
-    const b = toScreen(m.baseNow, cam, W, H);
-    const onScreen = b.depth > 0.05 && b.x > -px && b.x < W + px && b.y > -px && b.y < H + px;
-    if (!onScreen && !m.seen) { if (b.depth <= 0.05 ? b.side < 0 : b.x < 0) offL = true; else offR = true; }
-    if (b.depth > 0.05) vis.push({ m, b });
+    let show = m.lv === curLevel, b = null, anc = null;
+    if (show) {
+      if (m.animal) m.follow.lerp(m.animal.g.position, m.on ? 1 - Math.exp(-dt * 1.2) : 1);
+      b = toScreen(m.animal ? _b.copy(m.follow).add(m.base) : m.base, cam);
+      if (m.line) anc = toScreen(m.animal ? _b.copy(m.animal.g.position).add(m.anchor) : m.anchor, cam);
+      const onScreen = b.depth > 0.05 && b.x > -px && b.x < W + px && b.y > -px && b.y < H + px;
+      if (!onScreen && !m.seen) { if (b.depth <= 0.05 ? b.side < 0 : b.x < 0) offL = true; else offR = true; }
+      if (b.depth > 0.05) vis.push({ m, b, anc }); else show = false;
+    }
+    if (show !== m.on) { m.on = show; m.el.classList.toggle('is-off', !show); if (!show) { m.fresh = true; if (m.line) m.line.style.visibility = 'hidden'; } }
   }
   // separation: nearest markers keep their place; a marker that would overlap one already placed is lifted above it
   vis.sort((p, q) => p.b.depth - q.b.depth);
   const placed = [], gap = 6;
-  for (const { m, b } of vis) {
-    const w = m.aspect * px, l0 = b.x - 0.47 * px, r0 = l0 + w; let shift = 0;
-    for (let k = 0; k < 10; k++) {
-      const t = b.y - px / 2 - shift, bt = b.y + px / 2 - shift;
+  for (const { m, b, anc } of vis) {
+    if (!m.w) m.w = m.el.offsetWidth || px * 4;
+    const l0 = b.x - px / 2, r0 = l0 + m.w; let shift = 0;
+    for (let k = 0; k < 12; k++) {
+      const t = b.y - px / 2 - shift, bt = t + px;
       const hit = placed.find(p => l0 < p.r + gap && r0 > p.l - gap && t < p.b + gap && bt > p.t - gap);
       if (!hit) break; shift += bt - (hit.t - gap);
     }
     placed.push({ l: l0, r: r0, t: b.y - px / 2 - shift, b: b.y + px / 2 - shift });
-    const target = shift * 2 * b.depth / (p11 * H);           // pixels → metres at the marker's distance
-    m.lift += (target - m.lift) * Math.min(1, dt * 5);        // smooth, so labels glide instead of jumping
-  }
-  for (const { m } of vis) {
-    const top = m.baseNow.clone(); top.y += m.lift;
-    m.sprite.position.copy(top); m.sprite.scale.set(sy * m.aspect, sy, 1);
-    m.ring.position.copy(top);
-    const ph = ((time + m.phase) % 2.2) / 2.2, rs = m.seen ? 0 : sy * (0.9 + 0.9 * ph);
-    m.ring.scale.set(rs, rs, 1); m.ring.material.opacity = m.seen ? 0 : 0.85 * (1 - ph);
-    if (m.line) { const a = m.line.geometry.attributes.position; a.setXYZ(0, m.anchorNow.x, m.anchorNow.y, m.anchorNow.z); a.setXYZ(1, top.x, top.y, top.z); a.needsUpdate = true; }
-    const s = toScreen(top, cam, W, H), l = s.x - 0.47 * px;
-    m.rect = { l: l - 10, r: l + m.aspect * px + 10, t: s.y - px / 2 - 10, b: s.y + px / 2 + 10, cx: s.x, cy: s.y };   // tap area (with a margin)
+    if (m.fresh) { m.lift = shift; m.fresh = false; } else m.lift += (shift - m.lift) * Math.min(1, dt * 6);   // labels glide instead of jumping
+    if (m.hold && m.sx !== undefined) { placed[placed.length - 1] = { l: m.sx - px / 2, r: m.sx - px / 2 + m.w, t: m.sy - px / 2, b: m.sy + px / 2 }; }
+    const x = m.hold && m.sx !== undefined ? m.sx : b.x, y = m.hold && m.sy !== undefined ? m.sy : b.y - m.lift; m.sx = x; m.sy = y;
+    m.el.style.transform = `translate3d(${x.toFixed(1)}px, ${y.toFixed(1)}px, 0)`;
+    if (m.line) {
+      const ok = anc && anc.depth > 0.05;
+      m.line.style.visibility = ok ? 'visible' : 'hidden';
+      if (ok) { m.line.setAttribute('x1', anc.x.toFixed(1)); m.line.setAttribute('y1', anc.y.toFixed(1)); m.line.setAttribute('x2', x.toFixed(1)); m.line.setAttribute('y2', y.toFixed(1)); }
+    }
   }
   if (edgeL) { edgeL.classList.toggle('is-hidden', !offL); edgeR.classList.toggle('is-hidden', !offR); }
 }
-function pickMarker(clientX, clientY) {           // tap test on the markers as drawn on screen (works with every display mode)
-  const r = sceneEl.getBoundingClientRect(), x = clientX - r.left, y = clientY - r.top; let best = null, bd = 1e9;
-  for (const m of markers) { const q = m.rect; if (!q || !m.group.visible) continue;
-    if (x >= q.l && x <= q.r && y >= q.t && y <= q.b) { const d = Math.hypot(x - q.cx, y - q.cy); if (d < bd) { bd = d; best = m; } } }
-  return best;
-}
+window.addEventListener('resize', () => markers.forEach(m => { m.w = 0; }));
 
 // ---------------- interaction log ----------------
 const t0 = performance.now(); const log = [];
@@ -555,8 +538,8 @@ document.querySelectorAll('.level-button:not([disabled])').forEach(btn => btn.ad
 let activeMarker = null;
 function openCard(m, clientX) {
   const key = m.id, info = { ...hotspots[key], ...(OVERRIDES[curLevel]?.[key] || {}) };
-  if (activeMarker && activeMarker !== m) { activeMarker.active = false; drawMarker(activeMarker); }
-  activeMarker = m; m.active = true; m.seen = true; drawMarker(m);
+  if (activeMarker && activeMarker !== m) { activeMarker.active = false; markerState(activeMarker); }
+  activeMarker = m; m.active = true; m.seen = true; markerState(m);
   hotspotCard.hidden = false; seen.add(`${curLevel}:${key}`); updateCounter(); record('point', key);
   $('#hotspotType').textContent = info.type; $('#hotspotIcon').innerHTML = SPRITE[key] ? `<img src="${SPRITE[key]}" alt="" />` : info.icon;
   $('#hotspotTitle').textContent = info.title; $('#hotspotText').textContent = info.text; $('#hotspotLink').textContent = info.link;
@@ -567,14 +550,14 @@ function openCard(m, clientX) {
   hotspotCard.style.left = `${onRight ? mg : sb.width - cw - mg}px`; hotspotCard.style.top = `${top}px`;
   hotspotCard.style.maxHeight = `${Math.max(120, dockTop - top - 44)}px`;
 }
-function closeCard() { hotspotCard.hidden = true; if (activeMarker) { activeMarker.active = false; drawMarker(activeMarker); activeMarker = null; } }
+function closeCard() { hotspotCard.hidden = true; if (activeMarker) { activeMarker.active = false; markerState(activeMarker); activeMarker = null; } }
 $('#closeHotspot').addEventListener('click', (e) => { e.stopPropagation(); closeCard(); });
-// a tap on a marker opens its card; a tap elsewhere on the landscape closes the card
+// a tap on a marker opens its card (the marker's own click handler); a tap elsewhere on the landscape closes the card
 const isUi = (t) => !!t.closest?.('button, a, .hotspot-card, .score-dock, .log-panel, .start, .install-guide, .exploration-status, .certification-badge, .debug-box');
 let downAt = null;
 sceneEl.addEventListener('pointerdown', (e) => { downAt = isUi(e.target) ? null : { x: e.clientX, y: e.clientY }; });
 sceneEl.addEventListener('pointerup', (e) => {
-  if (downAt && Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y) < 8) { const m = pickMarker(e.clientX, e.clientY); if (m) openCard(m, e.clientX); else closeCard(); }
+  if (downAt && Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y) < 8) closeCard();   // a tap on the landscape (not on a marker) closes the card
   downAt = null;
 });
 // the level sentence appears for a few seconds after each level change, then fades
@@ -601,7 +584,7 @@ function tick(cam) {
   const dt = Math.min(0.05, clock.getDelta()), time = clock.elapsedTime;
   if (tAnim < 1) { tAnim = Math.min(1, tAnim + dt / 1.6); updateFlowers(wFrom, wTo, smooth(tAnim)); }
   U.uTime.value = time; U.uFrom.value.fromArray(wFrom); U.uTo.value.fromArray(wTo); U.uT.value = tAnim;
-  updateAnimals(dt, time); if (cam) updateMarkers(cam, dt, time);
+  updateAnimals(dt, time); if (cam) updateMarkers(cam, dt);
   frames++;
 }
 function freshCanvas() {   // each display mode gets its own canvas (a canvas keeps the graphics context it was first used with)
