@@ -18,9 +18,10 @@ window.THREE = THREE; // the 8th Wall engine uses window.THREE
 const params = new URLSearchParams(location.search);
 const FORCED = params.get('mode');
 const EYE_H = THREE.MathUtils.clamp(parseFloat(params.get('h')) || 1.35, 0.8, 2.0); // device height above the floor in AR (m)
-const XR_SCALE = params.get('scale') === 'responsive' ? 'responsive' : 'absolute';   // absolute: real metres (8th Wall estimates the device height)
+const XR_SCALE = params.get('scale') === 'absolute' ? 'absolute' : 'responsive';   // responsive (default): scene scaled to an assumed device height EYE_H; absolute: engine estimates real metres
+const DEBUG = params.has('debug');
 const TEST = params.has('test');
-const DPR_MAX = parseFloat(params.get('dpr')) || 3;            // render at the screen's full resolution (up to 3x)
+const DPR_MAX = parseFloat(params.get('dpr')) || 2;            // rendering resolution (device pixel ratio), 2x by default; ?dpr=3 for full resolution
 const XR8_SRC = 'https://cdn.jsdelivr.net/npm/@8thwall/engine-binary@1/dist/xr.js';
 
 // ---------------- photo camera model (shared by the 2D pictures and the 3D scene) ----------------
@@ -281,16 +282,18 @@ const SPECIES_2D = {
   5: { bee: { x: 1330, y: 505, h: 37 }, butterfly: { x: 1690, y: 452, h: 44, flip: true }, bird: { x: 520, y: 470, h: 52 } }
 };
 const FLY_H = { bee: 0.4, butterfly: 0.42 };          // assumed height above ground of the insects (m)
-// 2D markers of landscape elements (picture pixels), as in prototype v2.2
-const POINTS_2D = {
-  1: [['mown', 760, 470], ['margin', 1800, 395], ['hedge', 1960, 225]],
-  3: [['flower', 2070, 545], ['margin', 1542, 440], ['hedge', 1960, 225]],
-  5: [['flower', 1840, 540], ['strip', 1480, 515], ['margin', 1126, 440], ['hedge', 1960, 225]]
+// AR layout (v7): every species and grassland element sits on its real object in the landscape, but within 1.5–4 m of the
+// participant and spread to the left and right, so it is visible on a phone or tablet camera view (about 65° wide).
+// az = direction in the picture (degrees, 0 = picture centre, + = right), d = distance (m). Same points per level as prototype v2.2.
+// Checked against the edges of the unmown vegetation used for the pictures (the margin markers lie on the real margin edge).
+const AR_LAYOUT = {
+  1: { mown: { az: 0, d: 2.5 }, margin: { az: 44, d: 2.8 }, hedge: { x: 1960, y: 225 } },
+  3: { margin: { az: 44, d: 2.8 }, butterfly: { az: 50, d: 3.4 }, flower: { az: 58, d: 2.3 }, bee: { az: 66, d: 1.8 }, hedge: { x: 1960, y: 225 } },
+  5: { bird: { az: -30, d: 3.0 }, margin: { az: -5, d: 2.8 }, bee: { az: 10, d: 1.7 }, strip: { az: 15, d: 3.4 }, flower: { az: 38, d: 2.0 },
+       butterfly: { az: 55, d: 2.6 }, hedge: { x: 1960, y: 225 } }
 };
-function pointTo3D(x, y) {   // marker position: on the ground (just above the grass) or, above the horizon, on the backdrop
-  if (y <= Y0 + 3) { const az = (x - IMG_W / 2) / F; return world(az, R_BG - 0.5, H0 + R_BG * (Y0 - y) / F); }
-  const { az, d } = fromImg(x, y, 0.12); return world(az, d, 0.12);
-}
+const MARKER_H = 0.7;                      // markers float this high above the ground (m), with a thin line down to the object
+const MARKER_PX = 26;                      // marker height on screen (CSS pixels), the same at every distance
 
 function loftGeometry(prof, lengthM, depthRatio) {   // rounded 3D body from the outline of the side-view picture, coloured by that picture
   const W = prof.w, H = prof.h; let cols = prof.cols.filter(c => c[1] !== null);
@@ -348,18 +351,18 @@ function makeBird(tex, prof, lengthM) {
 function buildAnimals(prof, tx, wingInfo) {
   for (const [lvs, spec] of Object.entries(SPECIES_2D)) for (const [kind, s] of Object.entries(spec)) {
     const lv = Number(lvs); let a;
+    const L = AR_LAYOUT[lv][kind], azL = L.az * D2R, dL = L.d;                      // position: AR layout
     if (kind === 'bird') {
-      const yFeet = s.y + s.h / 2, { az, d } = fromImg(s.x, yFeet, 0);
-      const len = s.h * (1312 / 1199) * 0.795 * d / F;                              // same on-screen size as in the 2D picture
-      const b = makeBird(tx.lark, prof, len); b.g.position.copy(world(az, d));
+      const yFeet = s.y + s.h / 2, { d } = fromImg(s.x, yFeet, 0), az = azL;
+      const len = s.h * (1312 / 1199) * 0.795 * d / F;                              // size: as approved in the 2D prototype (about 20 cm)
+      const b = makeBird(tx.lark, prof, len); b.g.position.copy(world(az, dL));
       const baseYaw = -az;                                                           // side-on to the viewer, head to the left as in the picture
-      a = { kind, lv, g: b.g, inner: b.inner, home: b.g.position.clone(), baseYaw, yaw: baseYaw, targetYaw: baseYaw, timer: 2, action: 'idle', t: 0,
-        pinOffset: (s.h + 18) * d / F };
+      a = { kind, lv, g: b.g, inner: b.inner, home: b.g.position.clone(), baseYaw, yaw: baseYaw, targetYaw: baseYaw, timer: 2, action: 'idle', t: 0, top: len * 0.9 };
     } else {
-      const hI = FLY_H[kind], { az, d } = fromImg(s.x, s.y, hI);
-      if (kind === 'bee') { const len = s.h * 1.5 * 0.5625 * d / F; const b = makeBee(tx.bee, tx.wing, wingInfo, prof, len); a = { kind, lv, g: b.g, wings: b.wings }; a.g.rotation.y = -az + (s.flip ? Math.PI : 0); }
-      else { const span = s.h * 1.5 * 0.87 * d / F; const b = makeButterfly(tx.bfly, span); a = { kind, lv, g: b.g, pl: b.pl, pr: b.pr }; a.g.rotation.y = -az; }
-      a.home = world(az, d, hI); a.g.position.copy(a.home); a.pinOffset = (s.h * 0.5 + 18) * d / F;
+      const hI = FLY_H[kind], { d } = fromImg(s.x, s.y, hI), az = azL;
+      if (kind === 'bee') { const len = s.h * 1.5 * 0.5625 * d / F; const b = makeBee(tx.bee, tx.wing, wingInfo, prof, len); a = { kind, lv, g: b.g, wings: b.wings, top: len * 0.6 }; a.g.rotation.y = -az + (s.flip ? Math.PI : 0); }
+      else { const span = s.h * 1.5 * 0.87 * d / F; const b = makeButterfly(tx.bfly, span); a = { kind, lv, g: b.g, pl: b.pl, pr: b.pr, top: span * 0.4 }; a.g.rotation.y = -az; }
+      a.home = world(az, dL, hI); a.g.position.copy(a.home);
     }
     a.presence = lv === PRODUCT_LEVEL ? 1 : 0; a.phase = rand() * 10; root.add(a.g); animals.push(a);
   }
@@ -408,47 +411,66 @@ const LABEL = { mown: 'Mown area', flower: 'Meadow flowers', bee: 'Bee', butterf
 const OVERRIDES = { 1: { margin: { title: 'No field margin', label: 'No field margin', text: 'The grassland is managed right up to the edge, so no unmown margin is left for shelter or food.', link: 'Main effect: less refuge and fewer resources for insects and birds.' } } };
 const SPRITE = { bee: 'assets/bee.png', butterfly: 'assets/butterfly.png', bird: 'assets/skylark.png' };
 const $ = (s) => document.querySelector(s);
-const pinLayer = $('#pins'), sceneEl = $('#scene');
+const sceneEl = $('#scene');
 const hotspotCard = $('#hotspotCard'), seenCount = $('#seenCount'), badge = $('#badge'), productPill = $('#productPill'), levelLine = $('#levelLine');
-const pinEls = [];
-function makePin(lv, id, at, species) {
-  const b = document.createElement('button'); b.type = 'button'; b.className = 'pin pin3d' + (species ? ' pin--species' : ''); b.dataset.hotspot = id; b.dataset.level = lv;
-  const lab = OVERRIDES[lv]?.[id]?.label || LABEL[id]; b.setAttribute('aria-label', `Learn about: ${lab}`); b.innerHTML = `<span class="pin-label">${lab}</span>`;
-  b.hidden = true; pinLayer.append(b); pinEls.push({ el: b, at, lv: Number(lv), id }); b.addEventListener('click', (e) => { e.stopPropagation(); openCard(b); });
+
+// ---------------- markers: part of the 3D scene (they move exactly with the landscape), constant size on screen ----------------
+const markers = [];
+function drawMarker(m) {
+  const g = m.ctx, H = 64, r = 22, cx = 28, cy = H / 2, lab = m.label, seen = m.seen;
+  g.clearRect(0, 0, m.canvas.width, H);
+  g.font = '700 30px system-ui, -apple-system, Segoe UI, sans-serif';
+  const tw = g.measureText(lab).width;
+  g.fillStyle = 'rgba(250,250,242,0.95)'; g.beginPath(); g.roundRect(cx + 4, cy - 21, r + 18 + tw + 10, 42, 21); g.fill();   // label pill
+  g.fillStyle = 'rgba(255,255,255,0.95)'; g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.fill();                          // dot ring
+  g.fillStyle = seen ? '#8fbf6f' : '#356a47'; g.beginPath(); g.arc(cx, cy, r - 7, 0, Math.PI * 2); g.fill();                  // dot
+  g.fillStyle = '#183e2a'; g.textBaseline = 'middle'; g.fillText(lab, cx + r + 14, cy + 1);
+  m.tex.needsUpdate = true;
+}
+function makeMarker(lv, id, anchor, top, line) {
+  const label = OVERRIDES[lv]?.[id]?.label || LABEL[id];
+  const canvas = document.createElement('canvas'), ctx = canvas.getContext('2d');
+  ctx.font = '700 30px system-ui, -apple-system, Segoe UI, sans-serif';
+  canvas.width = Math.ceil(28 + 22 + 18 + ctx.measureText(label).width + 20); canvas.height = 64;
+  const tex = new THREE.CanvasTexture(canvas); tex.colorSpace = THREE.SRGBColorSpace; tex.minFilter = THREE.LinearFilter; tex.generateMipmaps = false;
+  const mat = new THREE.SpriteMaterial({ map: tex, sizeAttenuation: false, depthTest: false, depthWrite: false, transparent: true });
+  const sprite = new THREE.Sprite(mat); sprite.center.set(28 / canvas.width, 0.5); sprite.renderOrder = 20; sprite.position.copy(top);
+  const group = new THREE.Group(); group.add(sprite); group.visible = false;
+  if (line) {
+    const lg = new THREE.BufferGeometry().setFromPoints([anchor, top]);
+    const l = new THREE.Line(lg, new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85 })); l.renderOrder = 19; group.add(l);
+  }
+  root.add(group);
+  const m = { lv: Number(lv), id, label, canvas, ctx, tex, sprite, group, seen: false, aspect: canvas.width / canvas.height };
+  sprite.userData.marker = m; drawMarker(m); markers.push(m);
 }
 function buildPins() {
-  for (const lv of LV) {
-    for (const a of animals.filter(a => a.lv === lv)) makePin(lv, a.kind, () => a.g.position.clone().add(new THREE.Vector3(0, a.pinOffset, 0)), true);
-    for (const [id, x, y] of POINTS_2D[lv]) { const p = pointTo3D(x, y); makePin(lv, id, () => p.clone(), false); }
+  for (const lv of LV) for (const [id, L] of Object.entries(AR_LAYOUT[lv])) {
+    if (L.x !== undefined) {                       // on the backdrop (hedgerow): the marker sits on the hedge in the picture
+      const az = (L.x - IMG_W / 2) / F, p = world(az, R_BG - 0.5, H0 + R_BG * (Y0 - L.y) / F); makeMarker(lv, id, p, p, false); continue;
+    }
+    const a = animals.find(x => x.lv === lv && x.kind === id);
+    if (a) {                                       // species: marker above the animal's home position (not following its small movements)
+      const top = a.home.clone(); top.y += a.top + 0.16; makeMarker(lv, id, a.home.clone().setY(a.home.y + a.top * 0.5), top, true);
+    } else {                                       // grassland element: marker above its spot on the ground
+      const g = world(L.az * D2R, L.d, 0); makeMarker(lv, id, g, world(L.az * D2R, L.d, MARKER_H), true);
+    }
   }
 }
-const _v = new THREE.Vector3(), _inv = new THREE.Matrix4();
-const overlap = (a, b, m = 4) => a.left < b.right + m && a.right > b.left - m && a.top < b.bottom + m && a.bottom > b.top - m;
-function updatePins(cam) {
+function updateMarkers(cam) {
   if (!cam) return;
-  root.updateMatrixWorld(true); _inv.copy(cam.matrixWorld).invert();
-  const sb = sceneEl.getBoundingClientRect(), w = sb.width, h = sb.height;
-  const ui = ['#badge', '#productPill', '.score-dock', '#statusPill', '#fsBtn', '#hotspotCard', '#arHint'].map(s => $(s)).filter(n => n && !n.hidden && n.offsetParent !== null).map(n => n.getBoundingClientRect());
-  const placed = [];
-  for (const p of pinEls) {
-    if (p.lv !== curLevel) { p.el.hidden = true; continue; }
-    p.el.hidden = false;
-    _v.copy(p.at()).applyMatrix4(root.matrixWorld).applyMatrix4(_inv); const inFront = _v.z < -0.05; _v.applyMatrix4(cam.projectionMatrix);
-    const x = (_v.x + 1) / 2 * w, y = (1 - _v.y) / 2 * h;
-    p.el.style.left = `${x}px`; p.el.style.top = `${y}px`;
-    const behind = !inFront || Math.abs(_v.x) > 1.1 || Math.abs(_v.y) > 1.1;
-    const dot = { left: sb.left + x - 14, right: sb.left + x + 14, top: sb.top + y - 14, bottom: sb.top + y + 14 };
-    const underUi = !behind && ui.some(r => overlap(dot, r, 2));
-    p.el.dataset.off = behind || underUi ? '1' : '0'; if (behind || underUi) continue;
-    // label: right of the marker, else left, else hidden (never on top of the interface or another label)
-    p.el.classList.remove('no-label'); let ok = false;
-    for (const left of [x > w * 0.62, !(x > w * 0.62)]) {
-      p.el.classList.toggle('label-left', left);
-      const r = p.el.querySelector('.pin-label').getBoundingClientRect();
-      if (!ui.some(u => overlap(r, u)) && !placed.some(q => overlap(r, q)) && r.left > sb.left && r.right < sb.right) { placed.push(r, dot); ok = true; break; }
-    }
-    if (!ok) { p.el.classList.add('no-label'); placed.push(dot); }
-  }
+  const h = sceneEl.clientHeight || window.innerHeight, p11 = cam.projectionMatrix.elements[5] || 1;
+  const px = Math.min(36, Math.max(MARKER_PX, h * 0.06));   // 26 px on phones, up to 36 px on tablets
+  const sy = 2 * px / (p11 * h);                  // keeps markers the same height on screen at any distance and camera angle
+  for (const m of markers) { m.group.visible = m.lv === curLevel; if (m.group.visible) m.sprite.scale.set(sy * m.aspect, sy, 1); }
+}
+const raycaster = new THREE.Raycaster(), _ndc = new THREE.Vector2();
+function pickMarker(clientX, clientY) {
+  if (!activeCam) return null;
+  const r = sceneEl.getBoundingClientRect(); _ndc.set((clientX - r.left) / r.width * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1);
+  activeCam.updateMatrixWorld(); raycaster.setFromCamera(_ndc, activeCam);
+  const hits = raycaster.intersectObjects(markers.filter(m => m.group.visible).map(m => m.sprite), false);
+  return hits.length ? hits[0].object.userData.marker : null;
 }
 
 // ---------------- interaction log ----------------
@@ -458,7 +480,7 @@ const record = (type, id, extra = {}) => log.push({ t_ms: Math.round(performance
 
 // ---------------- levels ----------------
 const seen = new Set();
-const idsAt = (lv) => [...new Set(pinEls.filter(p => p.lv === lv).map(p => p.id))];
+const idsAt = (lv) => [...new Set(markers.filter(m => m.lv === lv).map(m => m.id))];
 function updateCounter() { const ids = idsAt(curLevel); seenCount.textContent = `${ids.filter(id => seen.has(`${curLevel}:${id}`)).length} of ${ids.length} explored`; }
 const onehot = (lv) => [lv === 1 ? 1 : 0, lv === 3 ? 1 : 0, lv === 5 ? 1 : 0];
 let wFrom = onehot(PRODUCT_LEVEL), wTo = onehot(PRODUCT_LEVEL), tAnim = 1;
@@ -474,7 +496,7 @@ function setLevel(level, initial = false) {
   productPill.classList.toggle('is-comparison', !isProduct);
   levelLine.innerHTML = `<strong>Level ${level}:</strong> ${levels[level].line}` + (isProduct ? '' : ' <span class="cmp">(comparison)</span>');
   document.querySelectorAll('.level-button:not([disabled])').forEach(btn => { const a = Number(btn.dataset.level) === level; btn.classList.toggle('is-active', a); btn.setAttribute('aria-pressed', String(a)); });
-  pinEls.forEach(p => p.el.classList.toggle('is-seen', seen.has(`${p.lv}:${p.id}`)));
+  showLevelLine();
   updateCounter(); closeCard();
 }
 document.querySelectorAll('.level-button:not([disabled])').forEach(btn => btn.addEventListener('click', (e) => {
@@ -482,32 +504,32 @@ document.querySelectorAll('.level-button:not([disabled])').forEach(btn => btn.ad
   record('level', `level_${lv}`, { from: curLevel }); setLevel(lv);
 }));
 
-// ---------------- cards: high up, on the side away from the tapped point ----------------
-let activeTarget = null;
-function positionCard() {
-  if (hotspotCard.hidden || !activeTarget) return;
-  const sb = sceneEl.getBoundingClientRect(), tb = activeTarget.getBoundingClientRect(), dock = $('.score-dock').getBoundingClientRect(), bB = badge.getBoundingClientRect();
-  const cw = hotspotCard.offsetWidth, m = 16, onRight = (tb.left + tb.right) / 2 - sb.left > sb.width / 2;
-  let left = onRight ? m : sb.width - cw - m;
-  if (onRight && left + cw > bB.left - sb.left - 8) left = Math.max(m, bB.left - sb.left - cw - 8);
-  if (!onRight && left < bB.right - sb.left + 8) left = Math.min(sb.width - cw - m, bB.right - sb.left + 8);
-  const top = 16;
-  hotspotCard.style.left = `${left}px`; hotspotCard.style.top = `${top}px`; hotspotCard.style.maxHeight = `${Math.max(120, dock.top - sb.top - top - 20)}px`;
-}
-function openCard(target) {
-  const key = target.dataset.hotspot, info = { ...hotspots[key], ...(OVERRIDES[curLevel]?.[key] || {}) };
-  activeTarget = target; hotspotCard.hidden = false; seen.add(`${curLevel}:${key}`); target.classList.add('is-seen'); updateCounter(); record('point', key);
+// ---------------- cards: on the side away from the tapped marker ----------------
+function openCard(m, clientX) {
+  const key = m.id, info = { ...hotspots[key], ...(OVERRIDES[curLevel]?.[key] || {}) };
+  hotspotCard.hidden = false; seen.add(`${curLevel}:${key}`); if (!m.seen) { m.seen = true; drawMarker(m); } updateCounter(); record('point', key);
   $('#hotspotType').textContent = info.type; $('#hotspotIcon').innerHTML = SPRITE[key] ? `<img src="${SPRITE[key]}" alt="" />` : info.icon;
   $('#hotspotTitle').textContent = info.title; $('#hotspotText').textContent = info.text; $('#hotspotLink').textContent = info.link;
-  hotspotCard.scrollTop = 0; positionCard();
+  hotspotCard.scrollTop = 0;
+  const sb = sceneEl.getBoundingClientRect(), cw = hotspotCard.offsetWidth, mg = 12, onRight = clientX - sb.left > sb.width / 2;
+  const top = onRight ? badge.getBoundingClientRect().bottom - sb.top + 10 : mg;      // left side: below the badge
+  const dockTop = $('.score-dock').getBoundingClientRect().top - sb.top;
+  hotspotCard.style.left = `${onRight ? mg : sb.width - cw - mg}px`; hotspotCard.style.top = `${top}px`;
+  hotspotCard.style.maxHeight = `${Math.max(120, dockTop - top - 44)}px`;
 }
-function closeCard() { activeTarget = null; hotspotCard.hidden = true; }
+function closeCard() { hotspotCard.hidden = true; }
 $('#closeHotspot').addEventListener('click', (e) => { e.stopPropagation(); closeCard(); });
-// a tap on the landscape (not on a marker or the interface) closes the card
-const isUi = (t) => !!t.closest?.('button, a, .hotspot-card, .score-dock, .log-panel, .start, .install-guide, .exploration-status');
+// a tap on a marker opens its card; a tap elsewhere on the landscape closes the card
+const isUi = (t) => !!t.closest?.('button, a, .hotspot-card, .score-dock, .log-panel, .start, .install-guide, .exploration-status, .certification-badge, .debug-box');
 let downAt = null;
 sceneEl.addEventListener('pointerdown', (e) => { downAt = isUi(e.target) ? null : { x: e.clientX, y: e.clientY }; });
-sceneEl.addEventListener('pointerup', (e) => { if (downAt && Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y) < 6) closeCard(); downAt = null; });
+sceneEl.addEventListener('pointerup', (e) => {
+  if (downAt && Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y) < 8) { const m = pickMarker(e.clientX, e.clientY); if (m) openCard(m, e.clientX); else closeCard(); }
+  downAt = null;
+});
+// the level sentence appears for a few seconds after each level change, then fades
+let lineTimer = 0;
+function showLevelLine() { levelLine.classList.remove('is-hidden'); clearTimeout(lineTimer); lineTimer = setTimeout(() => levelLine.classList.add('is-hidden'), 5000); }
 
 // ---------------- messages ----------------
 const toast = $('#toast'); let toastTimer = 0;
@@ -523,13 +545,14 @@ const isStandalone = () => window.matchMedia('(display-mode: fullscreen)').match
 const canFullscreen = () => !!(document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen);
 
 // ---------------- shared per-frame update ----------------
-let activeCam = null, mode = 'none';
+let activeCam = null, mode = 'none', frames = 0, trackStatus = '–', trackReason = '';
 const clock = new THREE.Clock();
 function tick(cam) {
   const dt = Math.min(0.05, clock.getDelta()), time = clock.elapsedTime;
   if (tAnim < 1) { tAnim = Math.min(1, tAnim + dt / 1.6); updateFlowers(wFrom, wTo, smooth(tAnim)); }
   U.uTime.value = time; U.uFrom.value.fromArray(wFrom); U.uTo.value.fromArray(wTo); U.uT.value = tAnim;
-  updateAnimals(dt, time); if (cam) { cam.updateMatrixWorld(); updatePins(cam); }
+  updateAnimals(dt, time); if (cam) { cam.updateMatrixWorld(); updateMarkers(cam); }
+  frames++;
 }
 function freshCanvas() {   // each display mode gets its own canvas (a canvas keeps the graphics context it was first used with)
   const old = $('#gl'), cv = document.createElement('canvas'); cv.id = 'gl'; old.replaceWith(cv); return cv;
@@ -591,6 +614,7 @@ async function runXR8() {
           },
           onUpdate: ({ processCpuResult }) => {
             const st = processCpuResult?.reality?.trackingStatus;
+            if (st && st !== trackStatus) { trackStatus = st; trackReason = processCpuResult?.reality?.trackingReason || ''; record('tracking', st, { from: trackReason }); }
             if (st === 'LIMITED') { if (performance.now() - limitedSince > 2500) showHint('Move the device slowly from side to side.'); }
             else if (st === 'NORMAL') { limitedSince = performance.now(); if (!arHint.hidden && !hintTimer) hideHint(); }
             tick(activeCam);
@@ -621,7 +645,7 @@ async function runWebXR() {
   session.addEventListener('end', () => { showToast('AR ended. Reload the page to start again.', 10000); });
   renderer.setAnimationLoop(() => {
     renderer.render(scene, camera);
-    const xc = renderer.xr.getCamera(); tick(xc.cameras && xc.cameras.length ? xc.cameras[0] : xc);
+    const xc = renderer.xr.getCamera(); activeCam = xc.cameras && xc.cameras.length ? xc.cameras[0] : xc; tick(activeCam);
   });
   showHint('Move the device slowly from side to side.', 5000);
   return { ok: true };
@@ -655,7 +679,7 @@ async function runOrient() {
   renderer.setAnimationLoop(() => {
     eul.set(ori.b * D2R, ori.a * D2R, -ori.g * D2R, 'YXZ'); camera.quaternion.setFromEuler(eul); camera.quaternion.multiply(q1); camera.quaternion.multiply(q0.setFromAxisAngle(zee, -screenAngle()));
     if (!headingSet) { fwd.set(0, 0, -1).applyQuaternion(camera.quaternion); rig.rotation.y = -Math.atan2(-fwd.x, -fwd.z); headingSet = true; }   // the direction faced at Start = forward
-    rig.updateMatrixWorld(true); renderer.render(scene, camera); tick(camera);
+    rig.updateMatrixWorld(true); renderer.render(scene, camera); activeCam = camera; tick(camera);
   });
   showHint('Turn around slowly to look at the grassland.', 5000);
   return { ok: true };
@@ -686,10 +710,10 @@ function runPreview() {
       if (!moved) break; }
     aim();
   };
-  const size = () => { const w = sceneEl.clientWidth, h = sceneEl.clientHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); clampView(); positionCard(); };
+  const size = () => { const w = sceneEl.clientWidth, h = sceneEl.clientHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); clampView(); };
   size(); window.addEventListener('resize', size);
   const pointers = new Map();
-  cv.addEventListener('pointerdown', (e) => { pointers.set(e.pointerId, { x: e.clientX, y: e.clientY }); cv.setPointerCapture(e.pointerId); });
+  cv.addEventListener('pointerdown', (e) => { pointers.set(e.pointerId, { x: e.clientX, y: e.clientY }); });
   cv.addEventListener('pointermove', (e) => { const prev = pointers.get(e.pointerId); if (!prev || pointers.size !== 1) return;
     pYaw -= (e.clientX - prev.x) * 0.004; pPitch += (e.clientY - prev.y) * 0.003; clampView(); pointers.set(e.pointerId, { x: e.clientX, y: e.clientY }); });
   const up = (e) => pointers.delete(e.pointerId); cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
@@ -698,7 +722,7 @@ function runPreview() {
     if (e.key === 'ArrowUp' || e.key === 'w') pPitch += 0.04; if (e.key === 'ArrowDown' || e.key === 's') pPitch -= 0.04;
     if (e.key === 'Escape') closeCard(); clampView();
   });
-  renderer.setAnimationLoop(() => { renderer.render(scene, camera); tick(camera); });
+  activeCam = camera; renderer.setAnimationLoop(() => { renderer.render(scene, camera); tick(camera); });
   window.__ar3d.setCam = (h, fov) => { camera.position.y = h; camera.fov = fov; camera.updateProjectionMatrix(); aim(); };   // test only: simulate an AR viewpoint
   window.__ar3d.setView = (yaw, pitch) => { pYaw = yaw; pPitch = pitch; clampView(); return { yaw: pYaw, pitch: pPitch, ...extent() }; };
   return { ok: true };
@@ -718,10 +742,11 @@ document.addEventListener('fullscreenchange', fsChange); document.addEventListen
 
 // ---------------- researcher log: tap the counter 3 times ----------------
 let taps = [];
-$('#statusPill').addEventListener('click', (e) => {
+const openLogTaps = (e) => {
   e.stopPropagation(); const now = Date.now(); taps = taps.filter(t => now - t < 900); taps.push(now);
-  if (taps.length >= 3) { taps = []; $('#logText').value = `display mode: ${mode}\n` + 't_ms,type,id,level,from\n' + log.map(r => [r.t_ms, r.type, r.id, r.level, r.from ?? ''].join(',')).join('\n'); $('#logPanel').hidden = false; }
-});
+  if (taps.length >= 3) { taps = []; $('#logText').value = `display mode: ${mode}\nscale: ${XR_SCALE}, device height assumed: ${EYE_H} m, render resolution: ${dpr()}x\n` + 't_ms,type,id,level,from\n' + log.map(r => [r.t_ms, r.type, r.id, r.level, r.from ?? ''].join(',')).join('\n'); $('#logPanel').hidden = false; }
+};
+$('#statusPill').addEventListener('click', openLogTaps); badge.addEventListener('click', openLogTaps);
 $('#logClose').addEventListener('click', () => { $('#logPanel').hidden = true; });
 $('#logCopy').addEventListener('click', async () => { try { await navigator.clipboard.writeText($('#logText').value); $('#logCopy').textContent = 'Copied'; } catch (_) { $('#logText').select(); $('#logCopy').textContent = 'Select all and copy'; } });
 
@@ -766,6 +791,19 @@ startBtn.addEventListener('click', (e) => {
   }
   Promise.all(asks).then(next);
 });
+
+// ---------------- researcher check display (?debug=1): tracking status, frame rate, device position ----------------
+if (DEBUG) {
+  document.body.classList.add('debug');
+  const box = document.createElement('div'); box.className = 'debug-box'; sceneEl.appendChild(box);
+  let last = performance.now(), lastFrames = 0;
+  setInterval(() => {
+    const now = performance.now(), fps = (frames - lastFrames) * 1000 / (now - last); last = now; lastFrames = frames;
+    const c = activeCam, p = new THREE.Vector3(); if (c) c.getWorldPosition(p);
+    box.textContent = `mode: ${mode}\ntracking: ${mode === 'xr8' ? trackStatus + (trackReason ? ' (' + trackReason + ')' : '') : 'n/a'}\nfps: ${fps.toFixed(0)}\n` +
+      `device: x ${p.x.toFixed(2)}  y ${p.y.toFixed(2)}  z ${p.z.toFixed(2)} m\nscale: ${XR_SCALE} (h ${EYE_H} m)  res: ${dpr()}x\nscreen: ${innerWidth}×${innerHeight}`;
+  }, 500);
+}
 
 window.__ar3d = { finish: () => { tAnim = 0.999; }, setLevel: (lv) => { record('level', `level_${lv}`, { from: curLevel }); setLevel(lv); },
   get stats() { return { flowers: FL.length, animals: animals.length }; }, mode, U };

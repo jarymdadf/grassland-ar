@@ -2,7 +2,11 @@
 
 Research prototype for an experimental study on augmented reality (AR) and consumers' valuation of grassland biodiversity in milk products (Studies II/III).
 
-Live: https://jarymdadf.github.io/grassland-ar/
+Live (AR version): https://jarymdadf.github.io/grassland-ar/
+
+3D version without camera, as approved on 10.11.2026 (kept unchanged, for sharing): https://jarymdadf.github.io/grassland-ar/3d/
+
+Researcher check display (tracking status, frame rate, device position): add `?debug=1` to the AR link.
 
 ## What it does
 The approved 2D prototype pictures (levels 1, 3 and 5) are turned into a 3D grassland placed in the real room, covering 180° in front of the participant. Outside that half, the room is seen through the camera; the scene fades out softly towards its side edges and towards the top of the sky. The level bar (1, 3, 5), badge, markers, cards, counter and tap log are unchanged from prototype v2.2.
@@ -15,7 +19,9 @@ The approved 2D prototype pictures (levels 1, 3 and 5) are turned into a 3D gras
 
 The mode that ran is written into the tap log (researcher view: tap the "explored" counter three times).
 
-Test options in the address: `?mode=preview` (or `xr8`, `webxr`, `orient`) forces a mode; `?scale=responsive` uses 8th Wall's responsive scale with an assumed device height (`?h=1.35`, metres) instead of the default absolute scale (real metres); `?dpr=2` lowers the rendering resolution if a device is too slow.
+Test options in the address: `?mode=preview` (or `xr8`, `webxr`, `orient`) forces a mode; by default 8th Wall uses responsive scale with an assumed device height of 1.35 m (`?h=` changes it, in metres), `?scale=absolute` lets the engine estimate real metres; rendering resolution is 2x by default (`?dpr=3` for full resolution); `?debug=1` shows the researcher check display.
+
+AR layout (v7): species and grassland markers sit on their real objects in the landscape but within 1.5–4 m of the participant, spread to the left and right; markers are part of the 3D scene, float 0.7 m above the ground with a line to the object, and keep the same size on screen. Interface: small badge (top left; tap 3 times for the researcher log), product line, compact level bar; the level sentence shows for 5 s after each change.
 
 ## Full screen
 - Android: tapping Start switches to full screen and landscape.
