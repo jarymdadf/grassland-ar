@@ -373,13 +373,13 @@ function updateAnimals(dt, time) {
     a.g.visible = a.presence > 0.02; a.g.scale.setScalar(Math.max(0.001, a.presence)); if (!a.g.visible) continue;
     const t = time + a.phase;
     if (a.kind === 'bee') {            // hovers around its spot among the flowers
-      a.g.position.set(a.home.x + Math.sin(t * 0.9) * 0.05, a.home.y + Math.sin(t * 2.1) * 0.025, a.home.z + Math.sin(t * 1.3) * 0.04);
+      a.g.position.set(a.home.x + Math.sin(t * 0.7) * 0.11 + Math.sin(t * 1.9) * 0.03, a.home.y + Math.sin(t * 2.1) * 0.035, a.home.z + Math.sin(t * 0.9) * 0.08);   // wanders among the flowers
       const flap = 0.25 + 1.05 * Math.abs(Math.sin(t * 38)); a.wings.forEach(w => { w.rotation.x = w.userData.sgn * flap; });
     } else if (a.kind === 'butterfly') { // rests on its flower with open wings (as in the picture), now and then a short flutter
       const cycle = t % 9, flying = cycle > 7;
       const open = flying ? 0.15 + 1.1 * Math.abs(Math.sin(t * 13)) : 0.25 + 0.12 * Math.sin(t * 1.4) + (cycle > 5.5 && cycle < 6 ? 0.9 : 0);
       a.pl.rotation.z = -open; a.pr.rotation.z = open;
-      const k = flying ? Math.sin((cycle - 7) / 2 * Math.PI) : 0; a.g.position.set(a.home.x + k * 0.08, a.home.y + k * 0.1, a.home.z);
+      const k = flying ? Math.sin((cycle - 7) / 2 * Math.PI) : 0; a.g.position.set(a.home.x + k * 0.14, a.home.y + k * 0.16, a.home.z - k * 0.05);
     } else {                           // skylark: pecks, turns a little
       a.timer -= dt; a.t += dt;
       if (a.timer <= 0) { const r = rand(); a.t = 0;
@@ -415,62 +415,109 @@ const sceneEl = $('#scene');
 const hotspotCard = $('#hotspotCard'), seenCount = $('#seenCount'), badge = $('#badge'), productPill = $('#productPill'), levelLine = $('#levelLine');
 
 // ---------------- markers: part of the 3D scene (they move exactly with the landscape), constant size on screen ----------------
+// Each marker = a dot with its label, a pulsing ring (until visited) and a thin line down to its object.
+// Species markers follow their animal. Labels never overlap: a marker that would cover another one is lifted until it is free.
 const markers = [];
+const FONT = '700 30px system-ui, -apple-system, "Segoe UI", sans-serif';
 function drawMarker(m) {
-  const g = m.ctx, H = 64, r = 22, cx = 28, cy = H / 2, lab = m.label, seen = m.seen;
-  g.clearRect(0, 0, m.canvas.width, H);
-  g.font = '700 30px system-ui, -apple-system, Segoe UI, sans-serif';
-  const tw = g.measureText(lab).width;
-  g.fillStyle = 'rgba(250,250,242,0.95)'; g.beginPath(); g.roundRect(cx + 4, cy - 21, r + 18 + tw + 10, 42, 21); g.fill();   // label pill
-  g.fillStyle = 'rgba(255,255,255,0.95)'; g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.fill();                          // dot ring
-  g.fillStyle = seen ? '#8fbf6f' : '#356a47'; g.beginPath(); g.arc(cx, cy, r - 7, 0, Math.PI * 2); g.fill();                  // dot
-  g.fillStyle = '#183e2a'; g.textBaseline = 'middle'; g.fillText(lab, cx + r + 14, cy + 1);
+  const g = m.ctx, H = 64, r = 23, cx = 30, cy = H / 2;
+  g.clearRect(0, 0, m.canvas.width, H); g.font = FONT;
+  const tw = g.measureText(m.label).width + (m.seen ? 34 : 0);
+  g.fillStyle = m.active ? 'rgba(24,62,42,0.96)' : 'rgba(250,250,242,0.96)';
+  g.beginPath(); g.roundRect(cx + 2, cy - 22, r + 16 + tw + 14, 44, 22); g.fill();                                      // label pill
+  g.fillStyle = '#ffffff'; g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.fill();                                     // dot ring
+  g.fillStyle = m.seen ? '#8fbf6f' : '#2f6945'; g.beginPath(); g.arc(cx, cy, r - 7, 0, Math.PI * 2); g.fill();           // dot
+  g.fillStyle = m.active ? '#f4f7ee' : '#183e2a'; g.textBaseline = 'middle'; g.fillText(m.label, cx + r + 14, cy + 1);
+  if (m.seen) { g.font = '700 26px system-ui, sans-serif'; g.fillStyle = m.active ? '#bfe0a8' : '#4f8a45'; g.fillText('✓', cx + r + 14 + tw - 30, cy + 1); }
   m.tex.needsUpdate = true;
 }
-function makeMarker(lv, id, anchor, top, line) {
+const ringTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d');
+  g.strokeStyle = '#ffffff'; g.lineWidth = 5; g.beginPath(); g.arc(32, 32, 28, 0, Math.PI * 2); g.stroke();
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; })();
+function makeMarker(lv, id, anchor, base, line, animal) {
   const label = OVERRIDES[lv]?.[id]?.label || LABEL[id];
-  const canvas = document.createElement('canvas'), ctx = canvas.getContext('2d');
-  ctx.font = '700 30px system-ui, -apple-system, Segoe UI, sans-serif';
-  canvas.width = Math.ceil(28 + 22 + 18 + ctx.measureText(label).width + 20); canvas.height = 64;
+  const canvas = document.createElement('canvas'), ctx = canvas.getContext('2d'); ctx.font = FONT;
+  canvas.width = Math.ceil(30 + 23 + 16 + ctx.measureText(label).width + 34 + 20); canvas.height = 64;
   const tex = new THREE.CanvasTexture(canvas); tex.colorSpace = THREE.SRGBColorSpace; tex.minFilter = THREE.LinearFilter; tex.generateMipmaps = false;
-  const mat = new THREE.SpriteMaterial({ map: tex, sizeAttenuation: false, depthTest: false, depthWrite: false, transparent: true });
-  const sprite = new THREE.Sprite(mat); sprite.center.set(28 / canvas.width, 0.5); sprite.renderOrder = 20; sprite.position.copy(top);
-  const group = new THREE.Group(); group.add(sprite); group.visible = false;
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, sizeAttenuation: false, depthTest: false, depthWrite: false, transparent: true }));
+  sprite.center.set(30 / canvas.width, 0.5); sprite.renderOrder = 21;
+  const ring = new THREE.Sprite(new THREE.SpriteMaterial({ map: ringTex, sizeAttenuation: false, depthTest: false, depthWrite: false, transparent: true }));
+  ring.renderOrder = 20;
+  const group = new THREE.Group(); group.add(ring, sprite); group.visible = false;
+  let lineObj = null;
   if (line) {
-    const lg = new THREE.BufferGeometry().setFromPoints([anchor, top]);
-    const l = new THREE.Line(lg, new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85 })); l.renderOrder = 19; group.add(l);
+    const lg = new THREE.BufferGeometry(); lg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
+    lineObj = new THREE.Line(lg, new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9, depthTest: false })); lineObj.renderOrder = 19; lineObj.frustumCulled = false; group.add(lineObj);
   }
   root.add(group);
-  const m = { lv: Number(lv), id, label, canvas, ctx, tex, sprite, group, seen: false, aspect: canvas.width / canvas.height };
-  sprite.userData.marker = m; drawMarker(m); markers.push(m);
+  const m = { lv: Number(lv), id, label, canvas, ctx, tex, sprite, ring, line: lineObj, group, seen: false, active: false,
+    anchor: anchor.clone(), base: base.clone(), animal, lift: 0, phase: rand() * 2, rect: null, aspect: canvas.width / canvas.height };
+  drawMarker(m); markers.push(m);
 }
 function buildPins() {
   for (const lv of LV) for (const [id, L] of Object.entries(AR_LAYOUT[lv])) {
     if (L.x !== undefined) {                       // on the backdrop (hedgerow): the marker sits on the hedge in the picture
-      const az = (L.x - IMG_W / 2) / F, p = world(az, R_BG - 0.5, H0 + R_BG * (Y0 - L.y) / F); makeMarker(lv, id, p, p, false); continue;
+      const az = (L.x - IMG_W / 2) / F, p = world(az, R_BG - 0.5, H0 + R_BG * (Y0 - L.y) / F); makeMarker(lv, id, p, p, false, null); continue;
     }
     const a = animals.find(x => x.lv === lv && x.kind === id);
-    if (a) {                                       // species: marker above the animal's home position (not following its small movements)
-      const top = a.home.clone(); top.y += a.top + 0.16; makeMarker(lv, id, a.home.clone().setY(a.home.y + a.top * 0.5), top, true);
-    } else {                                       // grassland element: marker above its spot on the ground
-      const g = world(L.az * D2R, L.d, 0); makeMarker(lv, id, g, world(L.az * D2R, L.d, MARKER_H), true);
-    }
+    if (a) makeMarker(lv, id, new THREE.Vector3(0, a.top * 0.5, 0), new THREE.Vector3(0, a.top + 0.18, 0), true, a);   // relative to the animal
+    else makeMarker(lv, id, world(L.az * D2R, L.d, 0), world(L.az * D2R, L.d, MARKER_H), true, null);
   }
 }
-function updateMarkers(cam) {
-  if (!cam) return;
-  const h = sceneEl.clientHeight || window.innerHeight, p11 = cam.projectionMatrix.elements[5] || 1;
-  const px = Math.min(36, Math.max(MARKER_PX, h * 0.06));   // 26 px on phones, up to 36 px on tablets
-  const sy = 2 * px / (p11 * h);                  // keeps markers the same height on screen at any distance and camera angle
-  for (const m of markers) { m.group.visible = m.lv === curLevel; if (m.group.visible) m.sprite.scale.set(sy * m.aspect, sy, 1); }
+const _w = new THREE.Vector3(), _a = new THREE.Vector3(), _inv = new THREE.Matrix4();
+function toScreen(local, cam, W, H) {            // picture-space point → screen pixels (same matrices as used for drawing)
+  _w.copy(local).applyMatrix4(root.matrixWorld).applyMatrix4(_inv); const depth = -_w.z;
+  _w.applyMatrix4(cam.projectionMatrix); return { x: (_w.x + 1) / 2 * W, y: (1 - _w.y) / 2 * H, depth, side: Math.sign(_w.x || 1) };
 }
-const raycaster = new THREE.Raycaster(), _ndc = new THREE.Vector2();
-function pickMarker(clientX, clientY) {
-  if (!activeCam) return null;
-  const r = sceneEl.getBoundingClientRect(); _ndc.set((clientX - r.left) / r.width * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1);
-  activeCam.updateMatrixWorld(); raycaster.setFromCamera(_ndc, activeCam);
-  const hits = raycaster.intersectObjects(markers.filter(m => m.group.visible).map(m => m.sprite), false);
-  return hits.length ? hits[0].object.userData.marker : null;
+const edgeL = document.getElementById('edgeLeft'), edgeR = document.getElementById('edgeRight');
+function updateMarkers(cam, dt, time) {
+  if (!cam) return;
+  root.updateMatrixWorld(true); cam.updateMatrixWorld(); _inv.copy(cam.matrixWorld).invert();
+  const W = sceneEl.clientWidth || innerWidth, H = sceneEl.clientHeight || innerHeight, p11 = cam.projectionMatrix.elements[5] || 1;
+  const px = Math.min(40, Math.max(30, H * 0.072));          // marker height on screen: 30 px on phones, up to 40 px on tablets
+  const sy = 2 * px / (p11 * H);                             // sprite scale that gives that height at any distance
+  const vis = [];
+  let offL = false, offR = false;
+  for (const m of markers) {
+    m.group.visible = m.lv === curLevel; m.rect = null; if (!m.group.visible) continue;
+    if (m.animal) { m.anchorNow = _a.copy(m.animal.g.position).add(m.anchor).clone(); m.baseNow = m.animal.g.position.clone().add(m.base); }
+    else { m.anchorNow = m.anchor; m.baseNow = m.base; }
+    const b = toScreen(m.baseNow, cam, W, H);
+    const onScreen = b.depth > 0.05 && b.x > -px && b.x < W + px && b.y > -px && b.y < H + px;
+    if (!onScreen && !m.seen) { if (b.depth <= 0.05 ? b.side < 0 : b.x < 0) offL = true; else offR = true; }
+    if (b.depth > 0.05) vis.push({ m, b });
+  }
+  // separation: nearest markers keep their place; a marker that would overlap one already placed is lifted above it
+  vis.sort((p, q) => p.b.depth - q.b.depth);
+  const placed = [], gap = 6;
+  for (const { m, b } of vis) {
+    const w = m.aspect * px, l0 = b.x - 0.47 * px, r0 = l0 + w; let shift = 0;
+    for (let k = 0; k < 10; k++) {
+      const t = b.y - px / 2 - shift, bt = b.y + px / 2 - shift;
+      const hit = placed.find(p => l0 < p.r + gap && r0 > p.l - gap && t < p.b + gap && bt > p.t - gap);
+      if (!hit) break; shift += bt - (hit.t - gap);
+    }
+    placed.push({ l: l0, r: r0, t: b.y - px / 2 - shift, b: b.y + px / 2 - shift });
+    const target = shift * 2 * b.depth / (p11 * H);           // pixels → metres at the marker's distance
+    m.lift += (target - m.lift) * Math.min(1, dt * 5);        // smooth, so labels glide instead of jumping
+  }
+  for (const { m } of vis) {
+    const top = m.baseNow.clone(); top.y += m.lift;
+    m.sprite.position.copy(top); m.sprite.scale.set(sy * m.aspect, sy, 1);
+    m.ring.position.copy(top);
+    const ph = ((time + m.phase) % 2.2) / 2.2, rs = m.seen ? 0 : sy * (0.9 + 0.9 * ph);
+    m.ring.scale.set(rs, rs, 1); m.ring.material.opacity = m.seen ? 0 : 0.85 * (1 - ph);
+    if (m.line) { const a = m.line.geometry.attributes.position; a.setXYZ(0, m.anchorNow.x, m.anchorNow.y, m.anchorNow.z); a.setXYZ(1, top.x, top.y, top.z); a.needsUpdate = true; }
+    const s = toScreen(top, cam, W, H), l = s.x - 0.47 * px;
+    m.rect = { l: l - 10, r: l + m.aspect * px + 10, t: s.y - px / 2 - 10, b: s.y + px / 2 + 10, cx: s.x, cy: s.y };   // tap area (with a margin)
+  }
+  if (edgeL) { edgeL.classList.toggle('is-hidden', !offL); edgeR.classList.toggle('is-hidden', !offR); }
+}
+function pickMarker(clientX, clientY) {           // tap test on the markers as drawn on screen (works with every display mode)
+  const r = sceneEl.getBoundingClientRect(), x = clientX - r.left, y = clientY - r.top; let best = null, bd = 1e9;
+  for (const m of markers) { const q = m.rect; if (!q || !m.group.visible) continue;
+    if (x >= q.l && x <= q.r && y >= q.t && y <= q.b) { const d = Math.hypot(x - q.cx, y - q.cy); if (d < bd) { bd = d; best = m; } } }
+  return best;
 }
 
 // ---------------- interaction log ----------------
@@ -505,9 +552,12 @@ document.querySelectorAll('.level-button:not([disabled])').forEach(btn => btn.ad
 }));
 
 // ---------------- cards: on the side away from the tapped marker ----------------
+let activeMarker = null;
 function openCard(m, clientX) {
   const key = m.id, info = { ...hotspots[key], ...(OVERRIDES[curLevel]?.[key] || {}) };
-  hotspotCard.hidden = false; seen.add(`${curLevel}:${key}`); if (!m.seen) { m.seen = true; drawMarker(m); } updateCounter(); record('point', key);
+  if (activeMarker && activeMarker !== m) { activeMarker.active = false; drawMarker(activeMarker); }
+  activeMarker = m; m.active = true; m.seen = true; drawMarker(m);
+  hotspotCard.hidden = false; seen.add(`${curLevel}:${key}`); updateCounter(); record('point', key);
   $('#hotspotType').textContent = info.type; $('#hotspotIcon').innerHTML = SPRITE[key] ? `<img src="${SPRITE[key]}" alt="" />` : info.icon;
   $('#hotspotTitle').textContent = info.title; $('#hotspotText').textContent = info.text; $('#hotspotLink').textContent = info.link;
   hotspotCard.scrollTop = 0;
@@ -517,7 +567,7 @@ function openCard(m, clientX) {
   hotspotCard.style.left = `${onRight ? mg : sb.width - cw - mg}px`; hotspotCard.style.top = `${top}px`;
   hotspotCard.style.maxHeight = `${Math.max(120, dockTop - top - 44)}px`;
 }
-function closeCard() { hotspotCard.hidden = true; }
+function closeCard() { hotspotCard.hidden = true; if (activeMarker) { activeMarker.active = false; drawMarker(activeMarker); activeMarker = null; } }
 $('#closeHotspot').addEventListener('click', (e) => { e.stopPropagation(); closeCard(); });
 // a tap on a marker opens its card; a tap elsewhere on the landscape closes the card
 const isUi = (t) => !!t.closest?.('button, a, .hotspot-card, .score-dock, .log-panel, .start, .install-guide, .exploration-status, .certification-badge, .debug-box');
@@ -551,7 +601,7 @@ function tick(cam) {
   const dt = Math.min(0.05, clock.getDelta()), time = clock.elapsedTime;
   if (tAnim < 1) { tAnim = Math.min(1, tAnim + dt / 1.6); updateFlowers(wFrom, wTo, smooth(tAnim)); }
   U.uTime.value = time; U.uFrom.value.fromArray(wFrom); U.uTo.value.fromArray(wTo); U.uT.value = tAnim;
-  updateAnimals(dt, time); if (cam) { cam.updateMatrixWorld(); updateMarkers(cam); }
+  updateAnimals(dt, time); if (cam) updateMarkers(cam, dt, time);
   frames++;
 }
 function freshCanvas() {   // each display mode gets its own canvas (a canvas keeps the graphics context it was first used with)
@@ -762,6 +812,7 @@ function enterMode(m) {
   fsBtn.hidden = m !== 'preview' || isStandalone();
   startScreen.hidden = true;
   setLevel(PRODUCT_LEVEL, true); record('start', 'session');
+  setTimeout(() => { if (arHint.hidden) showHint('Tap a marker to learn more. Turn left and right to find them all.', 5000); }, m === 'preview' ? 800 : 6000);
 }
 async function next() {
   startBtn.disabled = true; startBtn.textContent = 'Starting…';

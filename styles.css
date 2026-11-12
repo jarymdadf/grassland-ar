@@ -510,3 +510,12 @@ body.debug .exploration-status { top: calc(max(10px, env(safe-area-inset-top)) +
   .score-dock .level-line { font-size: 14px; }
   .hotspot-card { width: min(360px, 38vw); }
 }
+
+/* ================= v8: discovery arrows at the screen edges (unexplored markers outside the view) ================= */
+.edge-cue { z-index: 15; top: 50%; translate: 0 -50%; width: 34px; height: 64px; font-size: 34px; line-height: 1; color: #fff;
+  background: rgba(24,62,42,.55); border-color: rgba(255,255,255,.5); animation: nudge 1.6s ease-in-out infinite; }
+.edge-cue--left { left: max(0px, env(safe-area-inset-left)); }
+.edge-cue--right { right: max(0px, env(safe-area-inset-right)); animation-name: nudgeR; }
+@keyframes nudge { 0%,100% { translate: 0 -50%; } 50% { translate: -4px -50%; } }
+@keyframes nudgeR { 0%,100% { translate: 0 -50%; } 50% { translate: 4px -50%; } }
+.ar-hint { max-width: min(420px, 52vw); }

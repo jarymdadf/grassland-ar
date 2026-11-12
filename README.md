@@ -21,7 +21,7 @@ The mode that ran is written into the tap log (researcher view: tap the "explore
 
 Test options in the address: `?mode=preview` (or `xr8`, `webxr`, `orient`) forces a mode; by default 8th Wall uses responsive scale with an assumed device height of 1.35 m (`?h=` changes it, in metres), `?scale=absolute` lets the engine estimate real metres; rendering resolution is 2x by default (`?dpr=3` for full resolution); `?debug=1` shows the researcher check display.
 
-AR layout (v7): species and grassland markers sit on their real objects in the landscape but within 1.5–4 m of the participant, spread to the left and right; markers are part of the 3D scene, float 0.7 m above the ground with a line to the object, and keep the same size on screen. Interface: small badge (top left; tap 3 times for the researcher log), product line, compact level bar; the level sentence shows for 5 s after each change.
+AR layout (v7–v8): species and grassland markers sit on their real objects in the landscape but within 1.5–4 m of the participant, spread to the left and right; markers are part of the 3D scene, float 0.7 m above the ground (species markers follow their animal) with a line to the object, keep the same size on screen, never overlap (a marker that would cover another is lifted), pulse until visited and show a tick when visited; arrows at the screen edges point to unexplored markers outside the view. Interface: small badge (top left; tap 3 times for the researcher log), product line, compact level bar; the level sentence shows for 5 s after each change.
 
 ## Full screen
 - Android: tapping Start switches to full screen and landscape.
