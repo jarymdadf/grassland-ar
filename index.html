@@ -3,26 +3,27 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#183c29" />
-    <title>Biodiversity Grassland · 3D preview</title>
+    <meta name="theme-color" content="#132f20" />
+    <title>Grassland biodiversity</title>
+    <!-- Home Screen web app: opens full screen, without browser bars (iPhone: Share → Add to Home Screen) -->
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="icons/icon-180.png" />
+    <link rel="icon" href="icons/icon-192.png" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Grassland" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <main class="experience" id="experience">
-      <section class="scene" id="scene" aria-label="3D grassland">
+      <section class="scene" id="scene" aria-label="Grassland">
         <canvas id="gl"></canvas>
         <div id="pins"></div>
 
-        <div class="preview-chip" id="topHint">
-          <strong>3D preview · no camera yet</strong>
-          Drag to look around · scroll or pinch to move
-        </div>
-
-        <button class="fs-button" id="fsBtn" type="button" aria-label="Full screen">⛶ Full screen</button>
+        <button class="fs-button" id="fsBtn" type="button" aria-label="Full screen" hidden>⛶ Full screen</button>
         <div class="toast" id="toast" hidden></div>
+        <div class="ar-hint" id="arHint" hidden></div>
         <div class="exploration-status" id="statusPill" aria-live="polite">
           <span class="status-dot"></span>
           <span id="seenCount">0 of 5 explored</span>
@@ -71,12 +72,35 @@
           </div>
         </nav>
 
+        <section class="install-guide" id="installGuide" hidden>
+          <button class="card-close" id="guideClose" type="button" aria-label="Close">×</button>
+          <strong>Full screen on iPhone</strong>
+          <p>iPhone does not allow web pages to go full screen in Safari. Open it as an app instead:</p>
+          <ol>
+            <li>Tap <b>Share</b> (the square with the arrow) in Safari.</li>
+            <li>Tap <b>Add to Home Screen</b>, then <b>Add</b>.</li>
+            <li>Open <b>Grassland</b> from your Home Screen. It runs full screen.</li>
+          </ol>
+        </section>
+
         <section class="log-panel" id="logPanel" hidden>
           <strong>Researcher view · interaction log (this session)</strong>
           <textarea id="logText" readonly></textarea>
           <div class="row">
             <button class="secondary" id="logClose" type="button">Close</button>
             <button id="logCopy" type="button">Copy log</button>
+          </div>
+        </section>
+
+        <section class="start" id="startScreen">
+          <div class="start-card">
+            <h1>Grassland biodiversity</h1>
+            <p id="startText">Stand where you have free space in front of you. Hold the device upright at chest height, then tap Start. Allow camera and motion access when asked.</p>
+            <button class="start-button" id="startBtn" type="button" disabled>Start</button>
+            <p class="start-note" id="iosNote" hidden>For full screen on iPhone: tap Share → <b>Add to Home Screen</b>, then open <b>Grassland</b> from the Home Screen.</p>
+            <p class="start-legal">AR tracking: 8th Wall Engine © 2026 Niantic Spatial, Inc., used under the
+              <a href="https://github.com/8thwall/engine/blob/main/LICENSE" target="_blank" rel="noopener">XR Engine License Agreement</a>, provided without warranty.
+              3D graphics: three.js (MIT licence).</p>
           </div>
         </section>
         <div class="loading" id="loading">Loading the grassland…</div>
