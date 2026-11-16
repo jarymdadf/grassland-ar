@@ -1,39 +1,56 @@
 # Grassland biodiversity – AR experience
 
-Research prototype for an experimental study on augmented reality (AR) and consumers' valuation of grassland biodiversity in milk products (Studies II/III).
+Research prototype for an experiment on how augmented reality (AR) affects consumers' understanding and valuation of biodiversity in food products. Test product: fresh milk from grassland-based dairy production (Germany).
 
-Live (AR version): https://jarymdadf.github.io/grassland-ar/
+| | Link |
+|---|---|
+| **Last AR version** | https://jarymdadf.github.io/grassland-ar/ |
+| **3D version** (no camera) | https://jarymdadf.github.io/grassland-ar/3d/ |
 
-3D version without camera, as approved on 10.11.2026 (kept unchanged, for sharing): https://jarymdadf.github.io/grassland-ar/3d/
+## What the experiment is about
+Biodiversity is a credence attribute: consumers cannot see or verify it in the product, so they depend on how it is communicated on the label. A label score such as "Biodiversity 3/5" tells little about what is actually happening on the farm.
 
-Researcher check display (tracking status, frame rate, device position): add `?debug=1` to the AR link.
+This prototype adds a visual layer to a biodiversity label. Participants see the grassland behind the product and can compare it with lower and higher biodiversity levels. The study tests whether this format, compared with the label alone, changes how consumers evaluate the product (Study II) and how much they are willing to pay for biodiversity (Study III, choice experiment). Participants are assigned at random to one of the two formats, in a laboratory session.
 
-## What it does
-The approved 2D prototype pictures (levels 1, 3 and 5) are turned into a 3D grassland placed in the real room, covering 180° in front of the participant. Outside that half, the room is seen through the camera; the scene fades out softly towards its side edges and towards the top of the sky. The level bar (1, 3, 5), badge, markers, cards, counter and tap log are unchanged from prototype v2.2.
+## What participants see
+A grassland that belongs to the milk product, rated on a biodiversity label from 1 (low) to 5 (high). The product is level 3, and the experience opens at level 3. Participants can switch to level 1 and level 5 for comparison; levels 2 and 4 are shown but cannot be selected.
 
-## Display modes (chosen automatically after tapping Start)
-1. `xr8` – 8th Wall engine world tracking: camera image, turning and walking (6DoF). iPhone Safari and Android Chrome.
-2. `webxr` – Android's own AR (WebXR immersive-ar, 6DoF), used if the 8th Wall engine is not available.
-3. `orient` – camera image and device orientation: turning only (3DoF). Last AR fallback.
-4. `preview` – no camera; drag to look around. The view stops at the edge of the scene.
+| Level | Grassland | Points to tap |
+|---|---|---|
+| 1 – Low | Frequently mown, no flowers | Mown area, no field margin, hedgerow |
+| **3 – Moderate (this product)** | Mown field with a narrow flower-rich margin | Bee, butterfly, meadow flowers, field margin, hedgerow |
+| 5 – Very high | Wide unmown, flower-rich strip | Bee, butterfly, grassland bird, meadow flowers, flower strip, field margin, hedgerow |
 
-The mode that ran is written into the tap log (researcher view: tap the "explored" counter three times).
+Tapping a point opens a short card: what the species or element is, and which farming practice it is linked to. When the level changes, the landscape, flowers and animals change with it. A short sentence explains the level.
 
-Test options in the address: `?mode=preview` (or `xr8`, `webxr`, `orient`) forces a mode; by default 8th Wall uses responsive scale with an assumed device height of 1.35 m (`?h=` changes it, in metres), `?scale=absolute` lets the engine estimate real metres; rendering resolution is 2x by default (`?dpr=3` for full resolution); `?debug=1` shows the researcher check display.
+## Difference between the AR and the 3D version
+| | AR version | 3D version |
+|---|---|---|
+| Where the grassland appears | In the real room, through the device camera | On the screen only |
+| How to look around | Turn and walk with the device | Drag with the finger or mouse (arrow keys on a computer) |
+| Scene | 180° in front of the participant; behind and beside it, the real room stays visible | The same landscape, viewed from a fixed point |
+| Devices | Phone or tablet with camera | Any phone, tablet or computer |
+| Purpose | The treatment in the experiment | Showing the content to partners and colleagues, and a fallback if the camera cannot be used |
 
-AR layout (v7–v8): species and grassland markers sit on their real objects in the landscape but within 1.5–4 m of the participant, spread to the left and right; markers are part of the 3D scene, float 0.7 m above the ground (species markers follow their animal) with a line to the object, keep the same size on screen, never overlap (a marker that would cover another is lifted), pulse until visited and show a tick when visited; arrows at the screen edges point to unexplored markers outside the view. Interface: small badge (top left; tap 3 times for the researcher log), product line, compact level bar; the level sentence shows for 5 s after each change.
+Both versions show the same landscape, species, texts and levels.
 
-## Full screen
-- Android: tapping Start switches to full screen and landscape.
-- iPhone: Safari does not allow web pages to go full screen. Open it as a Home Screen web app: Share → Add to Home Screen → open "Grassland" from the Home Screen.
+## How to use
+**AR version**
+1. Open the link on a phone or tablet (iPhone: Safari; Android: Chrome) and turn the device sideways.
+2. Stand where there is free space in front of you. Hold the device at chest height, pointing slightly down at the floor, and tap **Start**.
+3. Allow camera and motion access. Move the device slowly from side to side until the grassland appears.
+4. Turn left and right to find the points; arrows at the screen edges show where unexplored points are. Use the level bar at the bottom to compare levels.
 
-## Files
-- `index.html`, `styles.css`, `app3d.js` – the experience
-- `manifest.webmanifest`, `icons/` – Home Screen web app
-- `assets/` – pictures, species images and scene data. `hr_L1/3/5.jpg` are the top 420 rows (sky, horizon, far field) of the approved pictures, enlarged 3x with AI super-resolution (Real-ESRGAN general-wdn-x4v3, run at 4x then reduced to 3x), because in AR the camera's field of view (~65°) shows the picture about twice as large as the 2D prototype did
-- `lib/three.module.min.js` – three.js 0.160.0 (MIT licence)
+**3D version**: open the link on any device and drag to look around.
 
-## Third-party software
-- AR tracking: 8th Wall Engine (distributed engine binary), © 2026 Niantic Spatial, Inc. Loaded from https://cdn.jsdelivr.net/npm/@8thwall/engine-binary@1/dist/xr.js and used under the XR Engine License Agreement: https://github.com/8thwall/engine/blob/main/LICENSE. Provided "as is", without warranty. This project is not connected with or endorsed by Niantic Spatial.
-- three.js 0.160.0, © three.js authors, MIT licence.
-- Real-ESRGAN (Wang et al., 2021), BSD-3-Clause licence: model realesr-general-wdn-x4v3, used offline to enlarge the pictures.
+**Tips**
+- If an older version appears, close the browser tab completely and open the link again.
+- iPhone: Safari does not allow full screen for web pages. For full screen, tap Share → *Add to Home Screen*, then open "Grassland" from the Home Screen.
+
+## Status
+Working prototype, currently being tested on devices (iPhone and Android tablet). The species list, the points per level and the card texts are placeholders until they are confirmed by grassland specialists. Data recording for the study sessions is still to be added.
+
+## Credits
+- AR tracking: 8th Wall Engine, © 2026 Niantic Spatial, Inc., used under the [XR Engine License Agreement](https://github.com/8thwall/engine/blob/main/LICENSE), provided without warranty. This project is not connected with or endorsed by Niantic Spatial.
+- 3D graphics: three.js (MIT licence).
+- Image enhancement of the distant landscape: Real-ESRGAN (Wang et al., 2021; BSD-3-Clause licence).
