@@ -1,6 +1,6 @@
 # Grassland biodiversity – AR experience
 
-Research prototype for an experiment on how augmented reality (AR) affects consumers' understanding and valuation of biodiversity in food products. Test product: fresh milk from grassland-based dairy production (Germany).
+This is the prototype we are building for our experiment on augmented reality (AR) and biodiversity in food. Our test product is fresh milk from grassland-based dairy farming in Germany.
 
 | | Link |
 |---|---|
@@ -8,49 +8,49 @@ Research prototype for an experiment on how augmented reality (AR) affects consu
 | **3D version** (no camera) | https://jarymdadf.github.io/grassland-ar/3d/ |
 
 ## What the experiment is about
-Biodiversity is a credence attribute: consumers cannot see or verify it in the product, so they depend on how it is communicated on the label. A label score such as "Biodiversity 3/5" tells little about what is actually happening on the farm.
+Consumers cannot see or check biodiversity in the milk they buy. They only know what the label tells them, and a score like "Biodiversity 3/5" says very little about what is actually happening on the farm.
 
-This prototype adds a visual layer to a biodiversity label. Participants see the grassland behind the product and can compare it with lower and higher biodiversity levels. The study tests whether this format, compared with the label alone, changes how consumers evaluate the product (Study II) and how much they are willing to pay for biodiversity (Study III, choice experiment). Participants are assigned at random to one of the two formats, in a laboratory session.
+So we bring the grassland behind the label to the consumer. With the AR layer, participants see the meadow the milk comes from, and can compare it with a poorer and a richer one. We then look at two things: whether this changes how people judge the product (Study II), and whether it changes how much they are willing to pay for biodiversity (Study III, a choice experiment). In our lab sessions, each participant is randomly given either the label alone or the label with the AR layer.
 
 ## What participants see
-A grassland that belongs to the milk product, rated on a biodiversity label from 1 (low) to 5 (high). The product is level 3, and the experience opens at level 3. Participants can switch to level 1 and level 5 for comparison; levels 2 and 4 are shown but cannot be selected.
+The grassland of our milk, rated on the biodiversity label from 1 (low) to 5 (high). Our product is level 3, so the experience opens there. Participants can switch to level 1 or level 5 to compare. Levels 2 and 4 are visible on the scale but cannot be selected.
 
-| Level | Grassland | Points to tap |
+| Level | The grassland | Points to tap |
 |---|---|---|
-| 1 – Low | Frequently mown, no flowers | Mown area, no field margin, hedgerow |
-| **3 – Moderate (this product)** | Mown field with a narrow flower-rich margin | Bee, butterfly, meadow flowers, field margin, hedgerow |
-| 5 – Very high | Wide unmown, flower-rich strip | Bee, butterfly, grassland bird, meadow flowers, flower strip, field margin, hedgerow |
+| 1 – Low | Mown often, no flowers | Mown area, no field margin, hedgerow |
+| **3 – Moderate (our product)** | Mown field with a narrow strip of flowers along the edge | Bee, butterfly, meadow flowers, field margin, hedgerow |
+| 5 – Very high | A wide unmown strip full of flowers | Bee, butterfly, grassland bird, meadow flowers, flower strip, field margin, hedgerow |
 
-Tapping a point opens a short card: what the species or element is, and which farming practice it is linked to. When the level changes, the landscape, flowers and animals change with it. A short sentence explains the level.
+Each point opens a short card explaining what it is and which farming practice it depends on. When participants switch level, the meadow, the flowers and the animals change with it, and one sentence sums up the level.
 
-## Difference between the AR and the 3D version
+## AR version and 3D version
 | | AR version | 3D version |
 |---|---|---|
-| Where the grassland appears | In the real room, through the device camera | On the screen only |
-| How to look around | Turn and walk with the device | Drag with the finger or mouse (arrow keys on a computer) |
-| Scene | 180° in front of the participant; behind and beside it, the real room stays visible | The same landscape, viewed from a fixed point |
-| Devices | Phone or tablet with camera | Any phone, tablet or computer |
-| Purpose | The treatment in the experiment | Showing the content to partners and colleagues, and a fallback if the camera cannot be used |
+| Where the grassland appears | In the room, through the camera of the phone or tablet | On the screen only |
+| How you look around | By turning and walking with the device | By dragging with your finger or mouse (or the arrow keys) |
+| What you see | The meadow spread out in front of you; the room stays visible around it | The same meadow, from one fixed spot |
+| Devices | Phone or tablet with a camera | Any phone, tablet or computer |
+| What we use it for | This is what participants get in the experiment | To show the project quickly to the people we work with, without having to set up the AR, and as a backup in the lab if the camera does not work |
 
-Both versions show the same landscape, species, texts and levels.
+The landscape, animals, texts and levels are the same in both.
 
-## How to use
+## How to try it
 **AR version**
-1. Open the link on a phone or tablet (iPhone: Safari; Android: Chrome) and turn the device sideways.
-2. Stand where there is free space in front of you. Hold the device at chest height, pointing slightly down at the floor, and tap **Start**.
-3. Allow camera and motion access. Move the device slowly from side to side until the grassland appears.
-4. Turn left and right to find the points; arrows at the screen edges show where unexplored points are. Use the level bar at the bottom to compare levels.
+1. Open the link on a phone or tablet (Safari on iPhone, Chrome on Android) and hold it sideways.
+2. Find a spot with some free space in front of you. Hold the device at chest height, tilted a little towards the floor, and tap **Start**.
+3. Allow the camera and motion access. Move the device slowly left and right until the meadow appears.
+4. Turn around to find the points; the arrows on the sides of the screen show where the ones you have not opened yet are. Use the level bar at the bottom to compare levels.
 
-**3D version**: open the link on any device and drag to look around.
+**3D version**: just open the link and drag to look around.
 
-**Tips**
-- If an older version appears, close the browser tab completely and open the link again.
-- iPhone: Safari does not allow full screen for web pages. For full screen, tap Share → *Add to Home Screen*, then open "Grassland" from the Home Screen.
+**Good to know**
+- If you see an older version, close the tab completely and open the link again.
+- On iPhone, Safari cannot go full screen. To get full screen, tap Share → *Add to Home Screen*, then open "Grassland" from your Home Screen.
 
-## Status
-Working prototype, currently being tested on devices (iPhone and Android tablet). The species list, the points per level and the card texts are placeholders until they are confirmed by grassland specialists. Data recording for the study sessions is still to be added.
+## Where we are
+The prototype works, and we are now testing it on an iPhone and on the Android tablet we will use in the lab. The species, the points per level and the card texts are still provisional: they will be checked by grassland specialists and ecologists, or by us. Recording the participants' data during the sessions is the next thing we will add.
 
 ## Credits
-- AR tracking: 8th Wall Engine, © 2026 Niantic Spatial, Inc., used under the [XR Engine License Agreement](https://github.com/8thwall/engine/blob/main/LICENSE), provided without warranty. This project is not connected with or endorsed by Niantic Spatial.
+- AR tracking: 8th Wall Engine, © 2026 Niantic Spatial, Inc., used under the [XR Engine License Agreement](https://github.com/8thwall/engine/blob/main/LICENSE), without warranty. This project is not connected with or endorsed by Niantic Spatial.
 - 3D graphics: three.js (MIT licence).
-- Image enhancement of the distant landscape: Real-ESRGAN (Wang et al., 2021; BSD-3-Clause licence).
+- Sharpening of the distant landscape: Real-ESRGAN (Wang et al., 2021; BSD-3-Clause licence).
