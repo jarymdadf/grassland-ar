@@ -13,7 +13,7 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Grassland" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <link rel="stylesheet" href="styles.css?v=9" />
+    <link rel="stylesheet" href="styles.css?v=n7" />
   </head>
   <body>
     <main class="experience" id="experience">
@@ -33,7 +33,7 @@
           <span id="seenCount">0 of 5 explored</span>
         </div>
 
-        <section class="certification-badge" id="badge" data-level="3" aria-label="Biodiversity label, level 3 out of 5">
+        <section class="certification-badge" id="badge" data-level="5" aria-label="Biodiversity label, level 5 out of 5">
           <div class="badge-ring">
             <span class="badge-kicker">Biodiversity label</span>
             <svg class="badge-graphic" viewBox="0 0 76 54" aria-hidden="true" focusable="false">
@@ -46,13 +46,13 @@
                 <circle cx="54" cy="28" r="9" fill="#254633" />
               </g>
             </svg>
-            <strong class="badge-score"><b id="badgeNumber">3</b><span>/5</span></strong>
-            <span class="badge-level" id="badgeLevel">Level 3 · Moderate</span>
+            <strong class="badge-score"><b id="badgeNumber">5</b><span>/5</span></strong>
+            <span class="badge-level" id="badgeLevel">Level 5 · Very high</span>
             <span class="badge-divider"></span>
             <span class="badge-footer">Grassland biodiversity</span>
           </div>
         </section>
-        <div class="product-pill" id="productPill">This product · Level 3</div>
+        <div class="product-pill" id="productPill" hidden></div>
 
         <aside class="hotspot-card" id="hotspotCard" hidden aria-live="polite">
           <button class="card-close" id="closeHotspot" type="button" aria-label="Close information">×</button>
@@ -70,9 +70,9 @@
           <div class="level-scale" role="group" aria-label="Biodiversity level from 1 to 5">
             <button class="level-button level-button--1" data-level="1" type="button" aria-pressed="false"><i class="tap-dot"></i><span>1</span><small>Low</small></button>
             <button class="level-button level-button--2" data-level="2" type="button" disabled aria-disabled="true"><span>2</span><small>Limited</small></button>
-            <button class="level-button level-button--3 is-product is-active" data-level="3" type="button" aria-pressed="true"><i class="tap-dot"></i><span>3</span><small>Moderate</small></button>
+            <button class="level-button level-button--3" data-level="3" type="button" aria-pressed="false"><i class="tap-dot"></i><span>3</span><small>Moderate</small></button>
             <button class="level-button level-button--4" data-level="4" type="button" disabled aria-disabled="true"><span>4</span><small>High</small></button>
-            <button class="level-button level-button--5" data-level="5" type="button" aria-pressed="false"><i class="tap-dot"></i><span>5</span><small>Very high</small></button>
+            <button class="level-button level-button--5 is-product is-active" data-level="5" type="button" aria-pressed="true"><i class="tap-dot"></i><span>5</span><small>Very high</small></button>
           </div>
         </nav>
 
@@ -116,6 +116,6 @@
         <p>This grassland is designed for a landscape view.</p>
       </div>
     </main>
-    <script type="module" src="app3d.js?v=9"></script>
+    <script type="module" src="app3d.js?v=n7"></script>
   </body>
 </html>

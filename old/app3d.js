@@ -16,7 +16,7 @@ import * as THREE from './lib/three.module.min.js';
 window.THREE = THREE; // the 8th Wall engine uses window.THREE
 
 const params = new URLSearchParams(location.search);
-const FORCED = params.get('mode') || window.FORCE_MODE || null;   // the /new/3d/ page sets FORCE_MODE = 'preview'
+const FORCED = params.get('mode');
 const EYE_H = THREE.MathUtils.clamp(parseFloat(params.get('h')) || 1.35, 0.8, 2.0); // device height above the floor in AR (m)
 const XR_SCALE = params.get('scale') === 'absolute' ? 'absolute' : 'responsive';   // responsive (default): scene scaled to an assumed device height EYE_H; absolute: engine estimates real metres
 const DEBUG = params.has('debug');
@@ -33,7 +33,7 @@ const R_BG = 25;                          // distance of the backdrop (m); groun
 const R_IN = 0.55, VEG_MAX = 8;           // 3D flowers from 0.55 m to 8 m (all flowers detected in the photo lie within 8 m)
 const GRASS_MAX = 16;                     // 3D grass from 0.55 m to 16 m; beyond that the (sharpened) photo ground
 const HR_ROWS = 420;                      // top rows of the pictures (sky, horizon, far field) also loaded 3x sharper (AI super-resolution)
-const PRODUCT_LEVEL = 5, LV = [1, 3, 5];   // new version: the product (carton) is level 5 (decision 27.11.2026)
+const PRODUCT_LEVEL = 3, LV = [1, 3, 5];
 const SEED = 20261110;                    // fixed seed: every participant sees exactly the same scene
 const START_X = 1450;                     // same start view as the 2D prototype
 
@@ -47,14 +47,10 @@ const fromImg = (x, y, h = 0) => ({ az: (x - IMG_W / 2) / F, d: F * (H0 - h) / (
 const world = (az, d, y = 0) => new THREE.Vector3(d * Math.sin(az), y, -d * Math.cos(az));
 // edges of the unmown vegetation, exactly as used to make the approved pictures (lines through the vanishing point)
 const lx = (y, xb) => 1327 + (xb - 1327) * (y - 297) / (723 - 297);
-const XB3 = 1190;   // new version: level-3 flower strip widened to the line drawn by the researcher (bottom-row x 1190 instead of 1880)
-const TALL = { 1: () => false, 3: (x, y) => y > Y0 && x > lx(y, XB3), 5: (x, y) => y > Y0 };   // new version: at level 5 the whole field is meadow
-const STRIP5 = (x, y) => y > Y0 && x > lx(y, 760);   // the original level-5 flower strip (kept for the original tall stems, so levels 1 and 3 stay identical)
+const TALL = { 1: () => false, 3: (x, y) => y > Y0 && x > lx(y, 1880), 5: (x, y) => y > Y0 && x > lx(y, 760) };
 
 function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 const rand = mulberry32(SEED);
-const rand2 = mulberry32(SEED + 55);   // separate random numbers for everything added to level 5, so levels 1 and 3 stay exactly as before
-const rr2 = (a, b) => a + (b - a) * rand2();
 const rr = (a, b) => a + (b - a) * rand();
 const smooth = (x) => x * x * (3 - 2 * x);
 
@@ -197,19 +193,10 @@ function buildGrass(img) {
   }
   // tall grasses where the pictures show unmown vegetation (they disappear when mown)
   for (let i = 0, n = 0; i < 90000 && n < 10000; i++) {
-    const az = rr(-90, 90) * D2R, d = logD(); const { x, y } = toImg(az, d); if (!STRIP5(x, y)) continue;
+    const az = rr(-90, 90) * D2R, d = logD(); const { x, y } = toImg(az, d); if (!TALL[5](x, y)) continue;
     const e = edge(az, d) * smooth(Math.min(1, (d - R_IN) / 1.0)); if (rand() > e) continue; n++;   // fewer tall stems right in front of the viewer
     const t = rr(0.25, 0.5) * (0.6 + 0.4 * e);
     add(az, d, LV.map(lv => (TALL[lv](x, y) ? t : 0)), 0.45, rr(0.004, 0.008) * wide(d), rr(0.1, 0.4), rr(-0.15, 0.15));
-  }
-  // new version: tall grasses and stems on the rest of the level-5 field (only at level 5)
-  for (let i = 0, n = 0; i < 120000 && n < 9000; i++) {
-    const az = rr2(-90, 90) * D2R, d = R_IN * Math.pow(GRASS_MAX / R_IN, Math.pow(rand2(), 1.15)); const { x, y } = toImg(az, d); if (STRIP5(x, y) || y <= Y0) continue;
-    const e = edge(az, d) * smooth(Math.min(1, (d - R_IN) / 1.0)); if (rand2() > e) continue; n++;
-    const t = rr2(0.22, 0.46) * (0.6 + 0.4 * e);
-    const p = world(az, d), xi = IMG_W / 2 + az * F;
-    A.off.push(p.x, p.z); A.rot.push(rand2() * Math.PI * 2); A.h.push(0, 0, t); A.w.push(rr2(0.004, 0.008) * wide(d)); A.bend.push(rr2(0.1, 0.4)); A.lean.push(rr2(-0.15, 0.15));
-    const c5 = sample(img.g5, xi + rr2(-2, 2), Y0 + F * (H0 - t * 0.45) / d + rr2(-2, 2)); A.c1.push(0, 0, 0); A.c3.push(0, 0, 0); A.c5.push(c5.r, c5.g, c5.b);
   }
   const geo = new THREE.InstancedBufferGeometry();
   { const ys = [0, 0.25, 0.5, 0.75], pos = [], idx = []; ys.forEach(y => pos.push(-0.5, y, 0, 0.5, y, 0)); pos.push(0, 1, 0);
@@ -219,20 +206,6 @@ function buildGrass(img) {
   geo.setAttribute('aOffset', ib(A.off, 2)); geo.setAttribute('aRot', ib(A.rot, 1)); geo.setAttribute('aH', ib(A.h, 3));
   geo.setAttribute('aC1', ib(A.c1, 3)); geo.setAttribute('aC3', ib(A.c3, 3)); geo.setAttribute('aC5', ib(A.c5, 3));
   geo.setAttribute('aWidth', ib(A.w, 1)); geo.setAttribute('aBend', ib(A.bend, 1)); geo.setAttribute('aLean', ib(A.lean, 1));
-  // step 4: in front of the two ground animals of level 5 (grassland bird, brown hare) the grass is lower, rising with the distance from
-  // the animal (like a trampled track), so the line of sight from the viewer to the animal passes above it. Level 5 heights only.
-  const OPEN = ['bird', 'hare'].map(k => { const L = AR_LAYOUT[5][k], p = world(L.az * D2R, L.d); return { x: p.x, z: p.z, len: 1.6, w: k === 'hare' ? 0.55 : 0.42 }; });
-  const limit5 = (x, z) => { let lim = 9;
-    for (const o of OPEN) {
-      const ux = -o.x, uz = -o.z, n = Math.hypot(ux, uz), dx = x - o.x, dz = z - o.z;
-      const along = (dx * ux + dz * uz) / n, side = Math.abs(dx * uz - dz * ux) / n;          // along the line from the animal towards the viewer
-      const a = Math.max(0, along), lat = smooth(Math.min(1, Math.max(0, (side - o.w * 0.6) / (o.w * 0.4))));
-      if (along < -o.w || along > o.len || side > o.w) continue;
-      lim = Math.min(lim, (0.05 + 0.28 * a) + lat * 0.6);
-    }
-    return lim; };
-  for (let i = 0; i < A.w.length; i++) { const lim = limit5(A.off[i * 2], A.off[i * 2 + 1]); if (A.h[i * 3 + 2] > lim) A.h[i * 3 + 2] = Math.max(0.03, lim); }
-  window.__grassLimit5 = limit5;
   geo.instanceCount = A.w.length;
   const mat = new THREE.ShaderMaterial({
     side: THREE.DoubleSide, uniforms: U,
@@ -268,19 +241,9 @@ function buildFlowers(list) {
     const hf = rr(...H[f.t]); if (f.y <= Y0 + 2) continue;
     const { az, d } = fromImg(f.x, f.y, hf); if (!(d > R_IN && d < VEG_MAX) || Math.abs(az) > 89 * D2R) continue;
     const size = THREE.MathUtils.clamp(f.w * d / F, 0.035, 0.07);
-    if (f.x > lx(f.y, XB3) && f.x <= lx(f.y, 1880) && !f.v3) { const h = Math.sin(f.x * 12.9898 + f.y * 78.233) * 43758.5453; f.v3 = (h - Math.floor(h)) < 0.47 ? 1 : 0; }   // widened level-3 strip
     const p = world(az, d), toViewer = Math.atan2(-p.x, -p.z);   // flower heads turned towards the viewer, as in the photo
     FL.push({ type: f.t, p, h: hf, size, ef: smooth(Math.max(0, Math.min(1, (90 * D2R - Math.abs(az)) / (10 * D2R)))), vis: [0, f.v3, 1], yaw: f.t === 'clover' ? rand() * 6.28 : toViewer + rr(-0.4, 0.4), tilt: f.t === 'daisy' ? rr(0.5, 0.95) : rr(0.15, 0.4), top: new THREE.Vector3() });
   }
-  // new version: more meadow flowers at level 5 over the whole field (knapweed, meadow sage, bird's-foot trefoil, red clover)
-  const EXTRA = [['knap', 330, [0.32, 0.6], [0.028, 0.04]], ['sage', 170, [0.3, 0.5], [0.06, 0.09]], ['tref', 320, [0.1, 0.22], [0.022, 0.03]], ['clover', 220, [0.18, 0.34], [0.04, 0.06]]];
-  for (const [type, n, hr, sr] of EXTRA) for (let i = 0; i < n; i++) {
-    const az = rr2(-89, 89) * D2R, d = Math.sqrt(rr2(0.8 * 0.8, 9 * 9)), hf = rr2(...hr);
-    const p = world(az, d), toViewer = Math.atan2(-p.x, -p.z);
-    FL.push({ type, p, h: hf, size: rr2(...sr), ef: smooth(Math.max(0, Math.min(1, (90 * D2R - Math.abs(az)) / (10 * D2R)))), vis: [0, 0, 1],
-      yaw: type === 'clover' || type === 'sage' ? rand2() * 6.28 : toViewer + rr2(-0.5, 0.5), tilt: type === 'sage' ? rr2(0, 0.12) : type === 'knap' ? rr2(0, 0.25) : rr2(0, 0.35), top: new THREE.Vector3() });
-  }
-  if (window.__grassLimit5) FL.forEach(f => { if (f.h > window.__grassLimit5(f.p.x, f.p.z) + 0.05) f.vis = [f.vis[0], f.vis[1], 0]; });
   const daisyTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 128; const g = c.getContext('2d'); g.translate(64, 64);
     for (let i = 0; i < 24; i++) { g.save(); g.rotate(i / 24 * Math.PI * 2); g.fillStyle = i % 2 ? '#f4f2ec' : '#ffffff'; g.beginPath(); g.ellipse(0, -36, 5.5, 25, 0, 0, Math.PI * 2); g.fill(); g.restore(); }
     g.fillStyle = '#e9b41b'; g.beginPath(); g.arc(0, 0, 16, 0, Math.PI * 2); g.fill();
@@ -288,10 +251,6 @@ function buildFlowers(list) {
   const cloverTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d'); g.fillStyle = '#b0708e'; g.fillRect(0, 0, 64, 64);
     const r = mulberry32(7); for (let i = 0; i < 300; i++) { g.fillStyle = ['#d396b3', '#93506f', '#e6b8cc', '#bd7898'][i % 4]; g.fillRect(r() * 64, r() * 64, 3, 3); }
     const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; })();
-  const paint = (n, draw) => { const c = document.createElement('canvas'); c.width = c.height = n; draw(c.getContext('2d'), mulberry32(n + 3)); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; };
-  const knapTex = paint(64, (g, r) => { g.fillStyle = '#4e5a2c'; g.fillRect(0, 0, 64, 64); for (let i = 0; i < 380; i++) { g.fillStyle = ['#b04aa4', '#8e3586', '#cc6cc0', '#a33f97'][i % 4]; const y = r() * 40; g.fillRect(r() * 64, y, 2, 3 + r() * 4); } });
-  const sageTex = paint(64, (g, r) => { g.fillStyle = '#6f8a4a'; g.fillRect(0, 0, 64, 64); for (let k = 0; k < 8; k++) for (let i = 0; i < 30; i++) { g.fillStyle = ['#8c7fe6', '#a596f2', '#6d60c8', '#b7aaf5'][i % 4]; g.fillRect(r() * 64, 2 + k * 8 + r() * 3, 4, 4); } });
-  const trefTex = paint(32, (g, r) => { g.fillStyle = '#f2c21b'; g.fillRect(0, 0, 32, 32); for (let i = 0; i < 40; i++) { g.fillStyle = ['#e58c12', '#ffd84a', '#d9a514'][i % 3]; g.fillRect(r() * 32, r() * 32, 3, 3); } });
   const count = (t) => FL.filter(f => f.type === t).length;
   const stemGeo = new THREE.CylinderGeometry(0.0016, 0.0024, 1, 4, 1, true); stemGeo.translate(0, 0.5, 0);
   stems = new THREE.InstancedMesh(stemGeo, new THREE.MeshBasicMaterial({ color: 0x6a8f3a }), FL.length);
@@ -299,11 +258,8 @@ function buildFlowers(list) {
   HEADS.daisy = new THREE.InstancedMesh(daisyGeo, new THREE.MeshBasicMaterial({ map: daisyTex, alphaTest: 0.4, side: THREE.DoubleSide }), count('daisy'));
   HEADS.butter = new THREE.InstancedMesh(new THREE.SphereGeometry(0.35, 10, 6, 0, Math.PI * 2, Math.PI * 0.45, Math.PI * 0.55), new THREE.MeshLambertMaterial({ color: 0xf0bf1a, emissive: 0x6a5000, side: THREE.DoubleSide }), count('butter'));
   HEADS.clover = new THREE.InstancedMesh((() => { const g = new THREE.SphereGeometry(0.4, 10, 8); g.scale(1, 1.25, 1); return g; })(), new THREE.MeshLambertMaterial({ map: cloverTex, emissive: 0x2a1420 }), count('clover'));
-  HEADS.knap = new THREE.InstancedMesh((() => { const g = new THREE.SphereGeometry(0.5, 12, 8); g.scale(1, 0.85, 1); return g; })(), new THREE.MeshLambertMaterial({ map: knapTex, emissive: 0x2a0f28 }), count('knap'));
-  HEADS.sage = new THREE.InstancedMesh((() => { const g = new THREE.CylinderGeometry(0.035, 0.11, 1, 7, 1); g.translate(0, 0.5, 0); return g; })(), new THREE.MeshLambertMaterial({ map: sageTex, emissive: 0x2a2458 }), count('sage'));
-  HEADS.tref = new THREE.InstancedMesh((() => { const g = new THREE.SphereGeometry(0.5, 8, 6); g.scale(1.25, 0.7, 1.25); return g; })(), new THREE.MeshLambertMaterial({ color: 0xffffff, map: trefTex, emissive: 0x4a3600 }), count('tref'));
   [stems, ...Object.values(HEADS)].forEach(m => { m.frustumCulled = false; root.add(m); });
-  const counters = { daisy: 0, butter: 0, clover: 0, knap: 0, sage: 0, tref: 0 }; FL.forEach(f => { f.hi = counters[f.type]++; });
+  const counters = { daisy: 0, butter: 0, clover: 0 }; FL.forEach(f => { f.hi = counters[f.type]++; });
 }
 const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _s = new THREE.Vector3(), _p = new THREE.Vector3(), _e = new THREE.Euler();
 function updateFlowers(wFrom, wTo, t) {
@@ -314,7 +270,7 @@ function updateFlowers(wFrom, wTo, t) {
     const s = Math.max(1e-4, (a + (b - a) * t) * (edgeFade ? f.ef : 1));   // in AR, flowers near the side edges shrink away with the fading scene
     _p.set(f.p.x, 0, f.p.z); _e.set(f.tilt * 0.3, f.yaw, 0, 'YXZ'); _q.setFromEuler(_e); _s.set(1, f.h * s, 1); _m.compose(_p, _q, _s); stems.setMatrixAt(i, _m);
     f.top.set(0, f.h * s, 0).applyQuaternion(_q).add(_p);
-    _e.set(f.type === 'clover' || f.type === 'sage' ? f.tilt * 0.3 : f.tilt, f.yaw, 0, 'YXZ'); _q.setFromEuler(_e); _s.setScalar(s * f.size); _m.compose(f.top, _q, _s); HEADS[f.type].setMatrixAt(f.hi, _m);
+    _e.set(f.type === 'clover' ? 0 : f.tilt, f.yaw, 0, 'YXZ'); _q.setFromEuler(_e); _s.setScalar(s * f.size); _m.compose(f.top, _q, _s); HEADS[f.type].setMatrixAt(f.hi, _m);
   }
   stems.instanceMatrix.needsUpdate = true; Object.values(HEADS).forEach(m => { m.instanceMatrix.needsUpdate = true; });
 }
@@ -325,31 +281,18 @@ const SPECIES_2D = {
   3: { bee: { x: 1990, y: 500, h: 36, flip: true }, butterfly: { x: 1735, y: 448, h: 40 } },
   5: { bee: { x: 1330, y: 505, h: 37 }, butterfly: { x: 1690, y: 452, h: 44, flip: true }, bird: { x: 520, y: 470, h: 52 } }
 };
-const FLY_H = { bee: 0.4, butterfly: 0.42 };          // assumed height above ground of the insects in the 2D pictures (m; used for their size)
-const FLY_Y = { bee: 0.6, butterfly: 0.58 };          // step 4: height in the scene – just above the grass and flower tops, so they are visible
+const FLY_H = { bee: 0.4, butterfly: 0.42 };          // assumed height above ground of the insects (m)
 // AR layout (v7): every species and grassland element sits on its real object in the landscape, but within 1.5–4 m of the
 // participant and spread to the left and right, so it is visible on a phone or tablet camera view (about 65° wide).
 // az = direction in the picture (degrees, 0 = picture centre, + = right), d = distance (m). Same points per level as prototype v2.2.
 // Checked against the edges of the unmown vegetation used for the pictures (the margin markers lie on the real margin edge).
 const AR_LAYOUT = {
   1: { mown: { az: 0, d: 2.5 }, margin: { az: 44, d: 2.8 }, hedge: { x: 1960, y: 225 } },
-  // new version, level 3: field margin on the new strip edge in the centre of the view; butterfly, bee and meadow flowers spread over the wider strip
-  3: { margin: { az: 17, d: 3.2 }, butterfly: { az: 34, d: 3.8 }, bee: { az: 47, d: 2.8 }, flower: { az: 60, d: 2.4 }, hedge: { x: 1960, y: 225 } },
-  // new version: species spread to both sides (left: hare, bumblebee, grassland bird, whinchat, grasshopper; centre: field margin, bee,
-  // flower strip; right: butterfly, meadow flowers, hedgerow)
-  // species further back (27.11.2026): insects 2.6–3.8 m (enlarged in proportion, see SIZE_K), birds and hare 3.6–4 m (life size)
-  5: { hare: { az: -58, d: 4.0 }, bumblebee: { az: -44, d: 2.8 }, bird: { az: -30, d: 4.0 }, whinchat: { az: -17, d: 3.6 }, grasshopper: { az: -9, d: 2.6 },
-       margin: { az: -5, d: 2.8 }, bee: { az: 10, d: 2.8 }, strip: { az: 15, d: 3.4 }, butterfly: { az: 27, d: 3.8 }, flower: { az: 38, d: 2.0 }, hedge: { x: 1960, y: 225 } }
+  3: { margin: { az: 44, d: 2.8 }, butterfly: { az: 50, d: 3.4 }, flower: { az: 58, d: 2.3 }, bee: { az: 66, d: 1.8 }, hedge: { x: 1960, y: 225 } },
+  5: { bird: { az: -30, d: 3.0 }, margin: { az: -5, d: 2.8 }, bee: { az: 10, d: 1.7 }, strip: { az: 15, d: 3.4 }, flower: { az: 38, d: 2.0 },
+       butterfly: { az: 55, d: 2.6 }, hedge: { x: 1960, y: 225 } }
 };
 const MARKER_H = 0.7;                      // markers float this high above the ground (m), with a thin line down to the object
-// new version: the insects were moved further back and enlarged by the same factor, so they look as big on screen as before
-// (factor = new distance / previous distance). Birds and hare keep their life size.
-// step 4 (27.11.2026): all species bigger again, so they are clearly visible (sizes about: bee 17 cm, bumblebee 21 cm, grasshopper 24 cm,
-// butterfly 30 cm wingspan, grassland bird 31 cm, whinchat 20 cm, hare 70 cm) – all larger than life.
-const SIZE_K = { 3: { bee: 2.8 / 1.8 * 1.4, butterfly: 3.8 / 3.4 * 1.62 },
-  // step 5 (27.11.2026): brown hare and whinchat back to real size (they looked oddly big); bumblebee on the same scale as the bee next to it,
-  // slightly bigger than the bee, as in real life (about 1.1 × the bee's length)
-  5: { bee: 2.8 / 1.7 * 1.4, butterfly: 3.8 / 2.6 * 1.15, bumblebee: 0.19 / 0.09, grasshopper: 2.6 / 1.5 * 1.39, bird: 1.5, whinchat: 1, hare: 1 } };
 
 function loftGeometry(prof, lengthM, depthRatio) {   // rounded 3D body from the outline of the side-view picture, coloured by that picture
   const W = prof.w, H = prof.h; let cols = prof.cols.filter(c => c[1] !== null);
@@ -383,8 +326,7 @@ function makeButterfly(tex, span) {
   const mat = new THREE.MeshLambertMaterial({ map: tex, alphaTest: 0.5, side: THREE.DoubleSide });
   const pl = new THREE.Group(), pr = new THREE.Group(); pl.add(new THREE.Mesh(mk(xL, xC, true), mat)); pr.add(new THREE.Mesh(mk(xC, xR, false), mat));
   const body = new THREE.Mesh(new THREE.CapsuleGeometry(span * 0.035, span * 0.28, 4, 8), new THREE.MeshLambertMaterial({ color: 0x3b2a1c })); body.rotation.x = Math.PI / 2;
-  const tilt = new THREE.Group(); tilt.add(pl, pr, body); tilt.rotation.x = 0.9;   // step 4: tilted towards the viewer, so the open wings are seen from standing eye height
-  const g = new THREE.Group(); g.add(tilt); return { g, pl, pr };
+  const g = new THREE.Group(); g.add(pl, pr, body); return { g, pl, pr };
 }
 function makeBird(tex, prof, lengthM) {
   const L = loftGeometry(prof.skylark, lengthM, 0.55);
@@ -405,128 +347,21 @@ function makeBird(tex, prof, lengthM) {
   const g = new THREE.Group(); g.add(inner, shadow); return { g, inner };
 }
 
-// ---------------- new version: four more species at level 5 ----------------
-// Sizes: hare and whinchat life-size (hare about 50 cm long sitting, whinchat about 13 cm); the two insects enlarged like the
-// bee and butterfly (bumblebee 9 cm, grasshopper 10 cm) so they can be seen.
-const NEW5 = { hare: { len: 0.5 }, whinchat: { len: 0.135, perch: 0.62 }, grasshopper: { len: 0.1, h: 0.55 }, bumblebee: { len: 0.09, h: 0.6 } };   // base sizes; the insects are enlarged with SIZE_K
-function lambert(tex) { return new THREE.MeshLambertMaterial({ map: tex, side: THREE.DoubleSide, alphaTest: 0.5, transparent: false }); }
-function planeFrom(tex, iw, ih, a1, a2, b1, b2, L, z) {   // a flat picture part, placed so that 2 of its points land on 2 points of the body picture
-  const B1 = imgToModel(L, b1[0], b1[1]), B2 = imgToModel(L, b2[0], b2[1]);
-  const vA = new THREE.Vector2(a2[0] - a1[0], -(a2[1] - a1[1])), vB = new THREE.Vector2(B2.x - B1.x, B2.y - B1.y);
-  const k = vB.length() / vA.length(), ang = Math.atan2(vB.y, vB.x) - Math.atan2(vA.y, vA.x);
-  const geo = new THREE.PlaneGeometry(iw, ih); geo.translate(iw / 2, -ih / 2, 0);
-  const m = new THREE.Mesh(geo, lambert(tex)); m.scale.setScalar(k); m.rotation.z = ang;
-  const A1 = new THREE.Vector2(a1[0], -a1[1]).rotateAround(new THREE.Vector2(), ang).multiplyScalar(k);
-  m.position.set(B1.x - A1.x, B1.y - A1.y, z); return m;
-}
-const stick = (a, b, r, mat) => { const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, a.distanceTo(b), 5), mat); m.position.copy(a).add(b).multiplyScalar(0.5); m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize()); return m; };
-function softShadow(len) {
-  const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d'); const r = g.createRadialGradient(32, 32, 0, 32, 32, 32); r.addColorStop(0, 'rgba(20,24,12,.5)'); r.addColorStop(1, 'rgba(20,24,12,0)'); g.fillStyle = r; g.fillRect(0, 0, 64, 64);
-  const m = new THREE.Mesh(new THREE.CircleGeometry(len * 0.5, 24), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c), transparent: true, depthWrite: false })); m.rotation.x = -Math.PI / 2; m.position.y = 0.004; return m;
-}
-function makeHare(tx, prof) {
-  const P = prof.hare, L = loftGeometry(P, NEW5.hare.len, 0.62);
-  const inner = new THREE.Group(); inner.add(new THREE.Mesh(L.geo, new THREE.MeshLambertMaterial({ map: tx.hare, side: THREE.DoubleSide })));
-  const ears = [-1, 1].map(sd => { const piv = new THREE.Group(); const p = imgToModel(L, 440, 222); piv.position.set(p.x, p.y, sd * 0.022); inner.add(piv); return { piv }; });
-  // ears: 19 cm, rising up and back from the back of the head
-  ears.forEach(({ piv }, i) => { const len = 0.19, geo = new THREE.PlaneGeometry(len * 220 / 700, len); geo.translate(0, len / 2, 0);
-    const m = new THREE.Mesh(geo, lambert(tx.hare_ear)); piv.add(m); piv.rotation.z = -0.38 - i * 0.12; piv.rotation.x = (i ? 1 : -1) * 0.12; });
-  const box = new THREE.Box3().setFromObject(inner.children[0]); inner.position.set(-(box.min.x + box.max.x) / 2, -box.min.y, 0);
-  const g = new THREE.Group(); g.add(inner, softShadow(NEW5.hare.len * 1.1)); return { g, inner, ears: ears.map(e => e.piv), top: box.max.y - box.min.y };
-}
-function makeWhinchat(tx, prof) {
-  const P = prof.whinchat, L = loftGeometry(P, NEW5.whinchat.len, 0.6);
-  const inner = new THREE.Group(); inner.add(new THREE.Mesh(L.geo, new THREE.MeshLambertMaterial({ map: tx.whinchat, side: THREE.DoubleSide })));
-  const legMat = new THREE.MeshLambertMaterial({ color: 0x2a2018 }); let footY = 0;
-  P.legs.forEach(leg => { const a = imgToModel(L, leg.top[0] * P.w, leg.top[1] * P.h), b = imgToModel(L, leg.foot[0] * P.w, leg.foot[1] * P.h); footY = Math.min(footY, b.y);
-    [-0.006, 0.006].forEach(z => { const m = stick(a, b, 0.0012, legMat); m.position.z = z; inner.add(m); }); });
-  inner.position.y = -footY; const foot = imgToModel(L, 490, 700); inner.position.x = -foot.x;
-  const perch = new THREE.Group(); const h = NEW5.whinchat.perch, stemMat = new THREE.MeshLambertMaterial({ color: 0x8a7a4a });
-  perch.add(stick(new THREE.Vector3(0.01, 0, 0), new THREE.Vector3(0, h, 0), 0.004, stemMat));
-  const seed = new THREE.Mesh(new THREE.SphereGeometry(0.012, 8, 6), new THREE.MeshLambertMaterial({ color: 0x6b5a34 })); seed.position.set(-0.004, h - 0.004, 0); perch.add(seed);
-  const bird = new THREE.Group(); bird.add(inner); bird.position.y = h;
-  const g = new THREE.Group(); g.add(perch, bird);
-  return { g, bird, inner, top: h + 0.1 };
-}
-function makeGrasshopper(tx, prof) {
-  const P = prof.grasshopper, L = loftGeometry(P, NEW5.grasshopper.len, 0.75);
-  const inner = new THREE.Group(); inner.add(new THREE.Mesh(L.geo, new THREE.MeshLambertMaterial({ map: tx.grasshopper, side: THREE.DoubleSide })));
-  const halfW = 0.009;
-  const legs = [-1, 1].map(sd => { const m = planeFrom(tx.hopper_leg, 700, 260, [30, 125], [615, 82], [470, 270], [870, 160], L, sd * halfW); inner.add(m); return m; });
-  const legMat = new THREE.MeshLambertMaterial({ color: 0x7d9238 }), antMat = new THREE.MeshLambertMaterial({ color: 0x6a6a30 });
-  [[300, 300], [390, 300]].forEach(([x, y]) => [-1, 1].forEach(sd => { const a = imgToModel(L, x, y), b = imgToModel(L, x - 40, 395); a.z = b.z = sd * halfW * 0.8; b.z = sd * halfW * 1.6; inner.add(stick(a, b, 0.0011, legMat)); }));
-  [-1, 1].forEach(sd => { const a = imgToModel(L, 150, 190), b = imgToModel(L, -20, 40); a.z = sd * 0.003; b.z = sd * 0.012; inner.add(stick(a, b, 0.0006, antMat)); });
-  const foot = imgToModel(L, 330, 395); inner.position.set(-foot.x, -foot.y, 0);
-  const stem = stick(new THREE.Vector3(0.02, -NEW5.grasshopper.h, 0), new THREE.Vector3(0, 0, 0), 0.003, new THREE.MeshLambertMaterial({ color: 0x7f9a44 }));
-  const body = new THREE.Group(); body.add(inner);
-  const g = new THREE.Group(); g.add(body); return { g, body, stem, legs, top: 0.05 };
-}
-function makeBumblebee(tx, prof, wingTex) {
-  const P = prof.bumblebee, L = loftGeometry(P, NEW5.bumblebee.len, 0.92);
-  const inner = new THREE.Group(); inner.add(new THREE.Mesh(L.geo, new THREE.MeshLambertMaterial({ map: tx.bumblebee, side: THREE.DoubleSide })));
-  const wl = NEW5.bumblebee.len * 0.62, wingGeo = new THREE.PlaneGeometry(wl, wl * 197 / 382); wingGeo.translate(wl * 0.42, wl * 0.2, 0);
-  const wingMat = new THREE.MeshBasicMaterial({ map: wingTex, transparent: true, depthWrite: false, side: THREE.DoubleSide, opacity: 0.8 });
-  const wings = [1, -1].map(sgn => { const piv = new THREE.Group(); piv.position.copy(imgToModel(L, 470, 175)); piv.add(new THREE.Mesh(wingGeo, wingMat)); piv.userData.sgn = sgn; inner.add(piv); return piv; });
-  const legMat = new THREE.MeshLambertMaterial({ color: 0x15120f });
-  [[380, 400], [460, 420], [540, 410]].forEach(([x, y], i) => [-1, 1].forEach(sd => { const a = imgToModel(L, x, y - 40), b = imgToModel(L, x + 30 + i * 25, y + 90); a.z = sd * 0.006; b.z = sd * 0.012; inner.add(stick(a, b, 0.0011, legMat)); }));
-  const ctr = new THREE.Box3().setFromObject(inner.children[0]).getCenter(new THREE.Vector3()); inner.position.sub(ctr);
-  const g = new THREE.Group(); g.add(inner); return { g, wings, top: NEW5.bumblebee.len * 0.45 };
-}
-function buildNewSpecies(prof, tx, wingTex) {
-  const L5 = AR_LAYOUT[5];
-  for (const kind of ['hare', 'whinchat', 'grasshopper', 'bumblebee']) {
-    const az = L5[kind].az * D2R, d = L5[kind].d; let a;
-    if (kind === 'hare') { const b = makeHare(tx, prof); a = { g: b.g, inner: b.inner, ears: b.ears, top: b.top }; a.home = world(az, d); }
-    else if (kind === 'whinchat') { const b = makeWhinchat(tx, prof); a = { g: b.g, bird: b.bird, inner: b.inner, top: b.top }; a.home = world(az, d); }
-    else if (kind === 'grasshopper') { const b = makeGrasshopper(tx, prof); a = { g: b.g, body: b.body, legs: b.legs, top: b.top }; a.home = world(az, d, NEW5.grasshopper.h);
-      a.stemBase = world(az, d); const st = b.stem; st.position.add(a.home); root.add(st); a.stem = st; }
-    else { const b = makeBumblebee(tx, prof, wingTex); a = { g: b.g, wings: b.wings, top: b.top }; a.home = world(az, d, NEW5.bumblebee.h); }
-    const K = SIZE_K[5][kind] ?? 1;
-    if (kind === 'whinchat') { a.bird.scale.setScalar(K); a.top = NEW5.whinchat.perch + 0.1 * K; }                                   // bird enlarged, perch unchanged
-    else if (K !== 1) { const sc = new THREE.Group(); [...a.g.children].forEach(c => sc.add(c)); sc.scale.setScalar(K); a.g.add(sc); a.top *= K; }   // whole animal enlarged
-    a.kind = kind; a.lv = 5; a.g.position.copy(a.home); a.baseYaw = -az; a.g.rotation.y = a.baseYaw; a.yaw = a.baseYaw; a.targetYaw = a.baseYaw;
-    a.presence = a.lv === PRODUCT_LEVEL ? 1 : 0; a.phase = rand2() * 10; a.timer = 2 + rand2() * 3; a.t = 0; a.action = 'idle'; root.add(a.g); animals.push(a);
-  }
-}
-function updateNewSpecies(a, dt, t) {
-  if (a.stem) { a.stem.visible = a.g.visible; a.stem.scale.y = Math.max(0.001, a.presence); }
-  a.timer -= dt; a.t += dt;
-  if (a.kind === 'hare') {             // sits; ears turn now and then; small turns of the body
-    if (a.timer <= 0) { a.timer = 1.5 + rand2() * 3; a.targetYaw = a.baseYaw + rr2(-0.25, 0.25); a.earT = 0; }
-    a.yaw += (a.targetYaw - a.yaw) * Math.min(1, dt * 2.5); a.g.rotation.y = a.yaw;
-    a.earT = (a.earT ?? 9) + dt; const tw = a.earT < 0.5 ? Math.sin(a.earT / 0.5 * Math.PI) * 0.25 : 0;
-    a.ears.forEach((e, i) => { e.rotation.z = -0.38 - i * 0.12 + (i ? tw : -tw * 0.6) + Math.sin(t * 0.7 + i) * 0.03; });
-    a.inner.scale.y = 1 + Math.sin(t * 2.4) * 0.006;   // breathing
-  } else if (a.kind === 'whinchat') {  // perched on a stem: looks around, bobs
-    if (a.timer <= 0) { a.timer = 0.8 + rand2() * 2.2; a.targetYaw = a.baseYaw + rr2(-0.6, 0.6); a.t = 0; }
-    a.yaw += (a.targetYaw - a.yaw) * Math.min(1, dt * 7); a.bird.rotation.y = a.yaw - a.baseYaw;
-    a.inner.rotation.z = a.t < 0.35 ? Math.sin(a.t / 0.35 * Math.PI) * 0.12 : 0;
-  } else if (a.kind === 'grasshopper') { // sits on a stem; now and then a short hop and back
-    const hopT = (t % 8);
-    const k = hopT > 6.6 && hopT < 7.1 ? Math.sin((hopT - 6.6) / 0.5 * Math.PI) : 0, back = hopT > 7.3 && hopT < 7.8 ? Math.sin((hopT - 7.3) / 0.5 * Math.PI) : 0;
-    a.g.position.set(a.home.x + (k - back) * 0.04, a.home.y + (k + back) * 0.1, a.home.z);
-    a.legs.forEach(l => { l.rotation.z = l.userData.z0 ?? (l.userData.z0 = l.rotation.z); l.rotation.z = l.userData.z0 - (k + back) * 0.5; });
-  } else {                             // bumblebee: heavier, slower flight among the flowers than the honeybee
-    a.g.position.set(a.home.x + Math.sin(t * 0.5) * 0.09 + Math.sin(t * 1.3) * 0.02, a.home.y + Math.sin(t * 1.6) * 0.04, a.home.z + Math.sin(t * 0.7) * 0.06);
-    const flap = 0.2 + 1.0 * Math.abs(Math.sin(t * 34)); a.wings.forEach(w => { w.rotation.x = w.userData.sgn * flap; });
-  }
-}
 function buildAnimals(prof, tx, wingInfo) {
   for (const [lvs, spec] of Object.entries(SPECIES_2D)) for (const [kind, s] of Object.entries(spec)) {
     const lv = Number(lvs); let a;
     const L = AR_LAYOUT[lv][kind], azL = L.az * D2R, dL = L.d;                      // position: AR layout
     if (kind === 'bird') {
       const yFeet = s.y + s.h / 2, { d } = fromImg(s.x, yFeet, 0), az = azL;
-      const len = s.h * (1312 / 1199) * 0.795 * d / F * (SIZE_K[lv]?.bird ?? 1);    // size: 2D prototype size (about 20 cm) × SIZE_K
+      const len = s.h * (1312 / 1199) * 0.795 * d / F;                              // size: as approved in the 2D prototype (about 20 cm)
       const b = makeBird(tx.lark, prof, len); b.g.position.copy(world(az, dL));
       const baseYaw = -az;                                                           // side-on to the viewer, head to the left as in the picture
       a = { kind, lv, g: b.g, inner: b.inner, home: b.g.position.clone(), baseYaw, yaw: baseYaw, targetYaw: baseYaw, timer: 2, action: 'idle', t: 0, top: len * 0.9 };
     } else {
       const hI = FLY_H[kind], { d } = fromImg(s.x, s.y, hI), az = azL;
-      const K = SIZE_K[lv]?.[kind] ?? 1;
-      if (kind === 'bee') { const len = s.h * 1.5 * 0.5625 * d / F * K; const b = makeBee(tx.bee, tx.wing, wingInfo, prof, len); a = { kind, lv, g: b.g, wings: b.wings, top: len * 0.6 }; a.g.rotation.y = -az + (s.flip ? Math.PI : 0); }
-      else { const span = s.h * 1.5 * 0.87 * d / F * K; const b = makeButterfly(tx.bfly, span); a = { kind, lv, g: b.g, pl: b.pl, pr: b.pr, top: span * 0.4 }; a.g.rotation.y = -az; }
-      a.home = world(az, dL, FLY_Y[kind]); a.g.position.copy(a.home);
+      if (kind === 'bee') { const len = s.h * 1.5 * 0.5625 * d / F; const b = makeBee(tx.bee, tx.wing, wingInfo, prof, len); a = { kind, lv, g: b.g, wings: b.wings, top: len * 0.6 }; a.g.rotation.y = -az + (s.flip ? Math.PI : 0); }
+      else { const span = s.h * 1.5 * 0.87 * d / F; const b = makeButterfly(tx.bfly, span); a = { kind, lv, g: b.g, pl: b.pl, pr: b.pr, top: span * 0.4 }; a.g.rotation.y = -az; }
+      a.home = world(az, dL, hI); a.g.position.copy(a.home);
     }
     a.presence = lv === PRODUCT_LEVEL ? 1 : 0; a.phase = rand() * 10; root.add(a.g); animals.push(a);
   }
@@ -534,9 +369,8 @@ function buildAnimals(prof, tx, wingInfo) {
 function updateAnimals(dt, time) {
   for (const a of animals) {
     const want = a.lv === curLevel ? 1 : 0; a.presence += (want - a.presence) * Math.min(1, dt * 3);
-    a.g.visible = a.presence > 0.02; a.g.scale.setScalar(Math.max(0.001, a.presence)); if (a.stem) a.stem.visible = a.g.visible; if (!a.g.visible) continue;
+    a.g.visible = a.presence > 0.02; a.g.scale.setScalar(Math.max(0.001, a.presence)); if (!a.g.visible) continue;
     const t = time + a.phase;
-    if (NEW5[a.kind]) { updateNewSpecies(a, dt, t); continue; }
     if (a.kind === 'bee') {            // hovers around its spot among the flowers
       a.g.position.set(a.home.x + Math.sin(t * 0.7) * 0.11 + Math.sin(t * 1.9) * 0.03, a.home.y + Math.sin(t * 2.1) * 0.035, a.home.z + Math.sin(t * 0.9) * 0.08);   // wanders among the flowers
       const flap = 0.25 + 1.05 * Math.abs(Math.sin(t * 38)); a.wings.forEach(w => { w.rotation.x = w.userData.sgn * flap; });
@@ -570,15 +404,11 @@ const hotspots = {
   bird: { type: 'Species', icon: '♩', title: 'Grassland bird', text: 'Ground-nesting birds such as skylarks need sufficient time and undisturbed space to breed successfully in grassland.', link: 'Linked practice: later or less frequent mowing during the nesting period.' },
   strip: { type: 'Grassland element', icon: '≋', title: 'Flower strip', text: 'Leaving parts of the grassland unmown allows more flowers to bloom and provides food and shelter for wildlife.', link: 'Main effect: continuous refuge and feeding areas within the managed meadow.' },
   margin: { type: 'Grassland element', icon: '↟', title: 'Field margin', text: 'Field margins provide structure, shelter, and resources for a variety of plants, insects, and birds.', link: 'Main effect: a transition zone between productive grassland and surrounding habitat.' },
-  grasshopper: { type: 'Species', icon: '⌇', title: 'Grasshopper', text: 'Grasshoppers and bush-crickets live in tall vegetation that is rarely mown, where they find food and shelter.', link: 'Linked practice: later and less frequent mowing, leaving some vegetation standing.' },
-  bumblebee: { type: 'Species', icon: '⌁', title: 'Bumblebee', text: 'Bumblebees are wild pollinators. They need flowers from spring to late summer, and many nest in the ground or in grass tussocks.', link: 'Linked practice: a variety of flowering plants throughout the season.' },
-  hare: { type: 'Species', icon: '⌒', title: 'Brown hare', text: 'Brown hares feed on wild herbs and grasses and hide in tall vegetation; their young are born in the open field.', link: 'Linked practice: late mowing and unmown refuge areas.' },
-  whinchat: { type: 'Species', icon: '♩', title: 'Whinchat', text: 'The whinchat nests on the ground in tall grass and needs undisturbed meadows until its young can fly.', link: 'Linked practice: first mowing after the nesting period.' },
   hedge: { type: 'Grassland element', icon: '♧', title: 'Hedgerow', text: 'Hedgerows create habitat, provide shelter, and improve landscape connectivity for many species.', link: 'Main effect: connected habitat for movement, nesting, and protection.' }
 };
-const LABEL = { mown: 'Mown area', flower: 'Meadow flowers', bee: 'Bee', butterfly: 'Butterfly', bird: 'Grassland bird', strip: 'Flower strip', margin: 'Field margin', hedge: 'Hedgerow', grasshopper: 'Grasshopper', bumblebee: 'Bumblebee', hare: 'Brown hare', whinchat: 'Whinchat' };
+const LABEL = { mown: 'Mown area', flower: 'Meadow flowers', bee: 'Bee', butterfly: 'Butterfly', bird: 'Grassland bird', strip: 'Flower strip', margin: 'Field margin', hedge: 'Hedgerow' };
 const OVERRIDES = { 1: { margin: { title: 'No field margin', label: 'No field margin', text: 'The grassland is managed right up to the edge, so no unmown margin is left for shelter or food.', link: 'Main effect: less refuge and fewer resources for insects and birds.' } } };
-const SPRITE = { bee: 'assets/bee.png', butterfly: 'assets/butterfly.png', bird: 'assets/skylark.png', grasshopper: 'assets/grasshopper.png', bumblebee: 'assets/bumblebee.png', hare: 'assets/hare.png', whinchat: 'assets/whinchat.png' };
+const SPRITE = { bee: 'assets/bee.png', butterfly: 'assets/butterfly.png', bird: 'assets/skylark.png' };
 const $ = (s) => document.querySelector(s);
 const sceneEl = $('#scene');
 const hotspotCard = $('#hotspotCard'), seenCount = $('#seenCount'), badge = $('#badge'), productPill = $('#productPill'), levelLine = $('#levelLine');
@@ -650,8 +480,6 @@ function updateMarkers(cam, dt) {
   // separation: nearest markers keep their place; a marker that would overlap one already placed is lifted above it
   vis.sort((p, q) => p.b.depth - q.b.depth);
   const placed = [], gap = 6;
-  const dock = document.querySelector('.score-dock')?.getBoundingClientRect();   // the level bar counts as taken: markers that would sit behind it are lifted above it
-  if (dock) placed.push({ l: dock.left - sb.left, r: dock.right - sb.left, t: dock.top - sb.top, b: H + 100 });
   for (const { m, b, anc } of vis) {
     if (!m.w) m.w = m.el.offsetWidth || px * 4;
     const l0 = b.x - px / 2, r0 = l0 + m.w; let shift = 0;
@@ -661,7 +489,7 @@ function updateMarkers(cam, dt) {
       if (!hit) break; shift += bt - (hit.t - gap);
     }
     placed.push({ l: l0, r: r0, t: b.y - px / 2 - shift, b: b.y + px / 2 - shift });
-    if (m.fresh) { m.lift = shift; m.fresh = false; } else m.lift += (shift - m.lift) * Math.min(1, dt * (shift > m.lift ? 16 : 5));   // labels move out of the way quickly, glide back slowly
+    if (m.fresh) { m.lift = shift; m.fresh = false; } else m.lift += (shift - m.lift) * Math.min(1, dt * 6);   // labels glide instead of jumping
     if (m.hold && m.sx !== undefined) { placed[placed.length - 1] = { l: m.sx - px / 2, r: m.sx - px / 2 + m.w, t: m.sy - px / 2, b: m.sy + px / 2 }; }
     const x = m.hold && m.sx !== undefined ? m.sx : b.x, y = m.hold && m.sy !== undefined ? m.sy : b.y - m.lift; m.sx = x; m.sy = y;
     m.el.style.transform = `translate3d(${x.toFixed(1)}px, ${y.toFixed(1)}px, 0)`;
@@ -696,7 +524,7 @@ function setLevel(level, initial = false) {
   const isProduct = level === PRODUCT_LEVEL;
   productPill.textContent = isProduct ? `This product · Level ${PRODUCT_LEVEL}` : `Showing level ${level} · This product is level ${PRODUCT_LEVEL}`;
   productPill.classList.toggle('is-comparison', !isProduct);
-  levelLine.innerHTML = `<strong>Level ${level}:</strong> ${levels[level].line}`;   // new version: no "(comparison)" note
+  levelLine.innerHTML = `<strong>Level ${level}:</strong> ${levels[level].line}` + (isProduct ? '' : ' <span class="cmp">(comparison)</span>');
   document.querySelectorAll('.level-button:not([disabled])').forEach(btn => { const a = Number(btn.dataset.level) === level; btn.classList.toggle('is-active', a); btn.setAttribute('aria-pressed', String(a)); });
   showLevelLine();
   updateCounter(); closeCard();
@@ -1018,21 +846,19 @@ window.__ar3d = { finish: () => { tAnim = 0.999; }, setLevel: (lv) => { record('
   if (!FORCED || FORCED === 'xr8') loadXR8();   // start downloading the AR engine while the grassland loads
   $('#iosNote').hidden = !(isIOS && !isStandalone());
   try {
-    const [g1, g3, g5, p1, p3, p5, h1, h3, h5, gi1, gi3, gi5, flowers, prof, wingInfo, bee, wing, bfly, lark, hare, hare_ear, whinchat, grasshopper, hopper_leg, bumblebee] = await Promise.all([
+    const [g1, g3, g5, p1, p3, p5, h1, h3, h5, gi1, gi3, gi5, flowers, prof, wingInfo, bee, wing, bfly, lark] = await Promise.all([
       loadTex('assets/ground_L1.jpg'), loadTex('assets/ground_L3.jpg'), loadTex('assets/ground_L5.jpg'),
       loadTex('assets/pano_L1.jpg'), loadTex('assets/pano_L3.jpg'), loadTex('assets/pano_L5.jpg'),
       loadTex('assets/hr_L1.jpg'), loadTex('assets/hr_L3.jpg'), loadTex('assets/hr_L5.jpg'),
       loadImg('assets/ground_L1.jpg'), loadImg('assets/ground_L3.jpg'), loadImg('assets/ground_L5.jpg'),
       fetch('assets/flowers.json').then(r => r.json()), fetch('assets/profiles.json').then(r => r.json()), fetch('assets/bee_wing.json').then(r => r.json()),
-      loadTex('assets/bee.png'), loadTex('assets/bee_wing.png'), loadTex('assets/butterfly.png'), loadTex('assets/skylark.png'),
-      loadTex('assets/hare.png'), loadTex('assets/hare_ear.png'), loadTex('assets/whinchat.png'), loadTex('assets/grasshopper.png'), loadTex('assets/hopper_leg.png'), loadTex('assets/bumblebee.png')]);
+      loadTex('assets/bee.png'), loadTex('assets/bee_wing.png'), loadTex('assets/butterfly.png'), loadTex('assets/skylark.png')]);
     const d3 = imageData(gi3); U.uSky.value.copy(skyColour(d3));
     photoTex.push(g1, g3, g5, p1, p3, p5, h1, h3, h5);
     buildPhotoScene({ g1, g3, g5, p1, p3, p5, h1, h3, h5, det: detailTexture() });
     buildGrass({ g1: imageData(gi1), g3: d3, g5: imageData(gi5) });
     buildFlowers(flowers); updateFlowers(wFrom, wTo, 1);
     buildAnimals(prof, { bee, wing, bfly, lark }, wingInfo);
-    buildNewSpecies(prof, { hare, hare_ear, whinchat, grasshopper, hopper_leg, bumblebee }, wing);
     buildPins();
   } catch (err) { console.error('loading failed', err); showToast('Some files could not be loaded. Please reload the page.'); }
   setLevel(PRODUCT_LEVEL, true);

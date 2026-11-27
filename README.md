@@ -6,6 +6,8 @@ This is the prototype I am building for the experiment on augmented reality (AR)
 |---|---|
 | **Last AR version** | https://jarymdadf.github.io/grassland-ar/ |
 | **3D version** (no camera) | https://jarymdadf.github.io/grassland-ar/3d/ |
+| Previous AR version | https://jarymdadf.github.io/grassland-ar/old/ |
+| Previous 3D version | https://jarymdadf.github.io/grassland-ar/old/3d/ |
 
 ## What the experiment is about
 Consumers cannot see or check biodiversity in the milk they buy. They only know what the label tells them, and a score like "Biodiversity 3/5" says very little about what is actually happening on the farm.
@@ -13,13 +15,13 @@ Consumers cannot see or check biodiversity in the milk they buy. They only know 
 So we bring the grassland behind the label to the consumer. With the AR layer, participants see the meadow the milk comes from, and can compare it with a poorer and a richer one. We then look at two things: whether this changes how people judge the product (Study II), and whether it changes how much they are willing to pay for biodiversity (Study III, a choice experiment). In the lab sessions, each participant is randomly given either the label alone or the label with the AR layer.
 
 ## What participants see
-The grassland the milk comes from, rated on the biodiversity label from 1 (low) to 5 (high). The product is level 3, so the experience opens there. Participants can switch to level 1 or level 5 to compare. Levels 2 and 4 are visible on the scale but cannot be selected.
+The grassland the milk comes from, rated on the biodiversity label from 1 (low) to 5 (high). The product is level 5, so the experience opens there. Participants can switch to level 1 or level 3 to compare. Levels 2 and 4 are visible on the scale but cannot be selected. The levels are coloured from red (1) to dark green (5), like the label on the carton.
 
 | Level | The grassland | Points to tap |
 |---|---|---|
 | 1 – Low | Mown often, no flowers | Mown area, no field margin, hedgerow |
-| **3 – Moderate (the product)** | Mown field with a narrow strip of flowers along the edge | Bee, butterfly, meadow flowers, field margin, hedgerow |
-| 5 – Very high | A wide unmown strip full of flowers | Bee, butterfly, grassland bird, meadow flowers, flower strip, field margin, hedgerow |
+| 3 – Moderate | Mown field with a wide strip of tall grass and flowers | Bee, butterfly, meadow flowers, field margin, hedgerow |
+| **5 – Very high (the product)** | The whole field unmown and full of flowers | Bee, bumblebee, butterfly, grasshopper, grassland bird, whinchat, brown hare, meadow flowers, flower strip, field margin, hedgerow |
 
 Each point opens a short card explaining what it is and which farming practice it depends on. When participants switch level, the meadow, the flowers and the animals change with it, and one sentence sums up the level.
 
@@ -48,7 +50,7 @@ The landscape, animals, texts and levels are the same in both.
 - On iPhone, Safari cannot go full screen. To get full screen, tap Share → *Add to Home Screen*, then open "Grassland" from your Home Screen.
 
 ## Where things stand
-The prototype works, and I am now testing it on an iPhone and on the Android tablet I will use in the lab. The species, the points per level and the card texts are still provisional: they will be checked by grassland specialists and ecologists, or by us. Recording the participants' data during the sessions is the next thing I will add.
+The prototype works, and I am now testing it on an iPhone and on the Android tablet I will use in the lab. The species, the points per level and the card texts are still provisional: they will be checked by grassland specialists and ecologists, or by us. Recording the participants' data during the sessions is the next thing I will add. The previous version (level 3 as the product, fewer species at level 5) stays online for comparison.
 
 ## Credits
 - AR tracking: 8th Wall Engine, © 2026 Niantic Spatial, Inc., used under the [XR Engine License Agreement](https://github.com/8thwall/engine/blob/main/LICENSE), without warranty. This project is not connected with or endorsed by Niantic Spatial.
