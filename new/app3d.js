@@ -219,6 +219,20 @@ function buildGrass(img) {
   geo.setAttribute('aOffset', ib(A.off, 2)); geo.setAttribute('aRot', ib(A.rot, 1)); geo.setAttribute('aH', ib(A.h, 3));
   geo.setAttribute('aC1', ib(A.c1, 3)); geo.setAttribute('aC3', ib(A.c3, 3)); geo.setAttribute('aC5', ib(A.c5, 3));
   geo.setAttribute('aWidth', ib(A.w, 1)); geo.setAttribute('aBend', ib(A.bend, 1)); geo.setAttribute('aLean', ib(A.lean, 1));
+  // step 4: in front of the two ground animals of level 5 (grassland bird, brown hare) the grass is lower, rising with the distance from
+  // the animal (like a trampled track), so the line of sight from the viewer to the animal passes above it. Level 5 heights only.
+  const OPEN = ['bird', 'hare'].map(k => { const L = AR_LAYOUT[5][k], p = world(L.az * D2R, L.d); return { x: p.x, z: p.z, len: 1.6, w: k === 'hare' ? 0.55 : 0.42 }; });
+  const limit5 = (x, z) => { let lim = 9;
+    for (const o of OPEN) {
+      const ux = -o.x, uz = -o.z, n = Math.hypot(ux, uz), dx = x - o.x, dz = z - o.z;
+      const along = (dx * ux + dz * uz) / n, side = Math.abs(dx * uz - dz * ux) / n;          // along the line from the animal towards the viewer
+      const a = Math.max(0, along), lat = smooth(Math.min(1, Math.max(0, (side - o.w * 0.6) / (o.w * 0.4))));
+      if (along < -o.w || along > o.len || side > o.w) continue;
+      lim = Math.min(lim, (0.05 + 0.28 * a) + lat * 0.6);
+    }
+    return lim; };
+  for (let i = 0; i < A.w.length; i++) { const lim = limit5(A.off[i * 2], A.off[i * 2 + 1]); if (A.h[i * 3 + 2] > lim) A.h[i * 3 + 2] = Math.max(0.03, lim); }
+  window.__grassLimit5 = limit5;
   geo.instanceCount = A.w.length;
   const mat = new THREE.ShaderMaterial({
     side: THREE.DoubleSide, uniforms: U,
@@ -266,6 +280,7 @@ function buildFlowers(list) {
     FL.push({ type, p, h: hf, size: rr2(...sr), ef: smooth(Math.max(0, Math.min(1, (90 * D2R - Math.abs(az)) / (10 * D2R)))), vis: [0, 0, 1],
       yaw: type === 'clover' || type === 'sage' ? rand2() * 6.28 : toViewer + rr2(-0.5, 0.5), tilt: type === 'sage' ? rr2(0, 0.12) : type === 'knap' ? rr2(0, 0.25) : rr2(0, 0.35), top: new THREE.Vector3() });
   }
+  if (window.__grassLimit5) FL.forEach(f => { if (f.h > window.__grassLimit5(f.p.x, f.p.z) + 0.05) f.vis = [f.vis[0], f.vis[1], 0]; });
   const daisyTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 128; const g = c.getContext('2d'); g.translate(64, 64);
     for (let i = 0; i < 24; i++) { g.save(); g.rotate(i / 24 * Math.PI * 2); g.fillStyle = i % 2 ? '#f4f2ec' : '#ffffff'; g.beginPath(); g.ellipse(0, -36, 5.5, 25, 0, 0, Math.PI * 2); g.fill(); g.restore(); }
     g.fillStyle = '#e9b41b'; g.beginPath(); g.arc(0, 0, 16, 0, Math.PI * 2); g.fill();
@@ -310,7 +325,8 @@ const SPECIES_2D = {
   3: { bee: { x: 1990, y: 500, h: 36, flip: true }, butterfly: { x: 1735, y: 448, h: 40 } },
   5: { bee: { x: 1330, y: 505, h: 37 }, butterfly: { x: 1690, y: 452, h: 44, flip: true }, bird: { x: 520, y: 470, h: 52 } }
 };
-const FLY_H = { bee: 0.4, butterfly: 0.42 };          // assumed height above ground of the insects (m)
+const FLY_H = { bee: 0.4, butterfly: 0.42 };          // assumed height above ground of the insects in the 2D pictures (m; used for their size)
+const FLY_Y = { bee: 0.6, butterfly: 0.58 };          // step 4: height in the scene – just above the grass and flower tops, so they are visible
 // AR layout (v7): every species and grassland element sits on its real object in the landscape, but within 1.5–4 m of the
 // participant and spread to the left and right, so it is visible on a phone or tablet camera view (about 65° wide).
 // az = direction in the picture (degrees, 0 = picture centre, + = right), d = distance (m). Same points per level as prototype v2.2.
@@ -328,7 +344,10 @@ const AR_LAYOUT = {
 const MARKER_H = 0.7;                      // markers float this high above the ground (m), with a thin line down to the object
 // new version: the insects were moved further back and enlarged by the same factor, so they look as big on screen as before
 // (factor = new distance / previous distance). Birds and hare keep their life size.
-const SIZE_K = { 3: { bee: 2.8 / 1.8, butterfly: 3.8 / 3.4 }, 5: { bee: 2.8 / 1.7, butterfly: 3.8 / 2.6, bumblebee: 2.8 / 1.7, grasshopper: 2.6 / 1.5 } };
+// step 4 (27.11.2026): all species bigger again, so they are clearly visible (sizes about: bee 17 cm, bumblebee 21 cm, grasshopper 24 cm,
+// butterfly 30 cm wingspan, grassland bird 31 cm, whinchat 20 cm, hare 70 cm) – all larger than life.
+const SIZE_K = { 3: { bee: 2.8 / 1.8 * 1.4, butterfly: 3.8 / 3.4 * 1.62 },
+  5: { bee: 2.8 / 1.7 * 1.4, butterfly: 3.8 / 2.6 * 1.15, bumblebee: 2.8 / 1.7 * 1.42, grasshopper: 2.6 / 1.5 * 1.39, bird: 1.5, whinchat: 1.5, hare: 1.4 } };
 
 function loftGeometry(prof, lengthM, depthRatio) {   // rounded 3D body from the outline of the side-view picture, coloured by that picture
   const W = prof.w, H = prof.h; let cols = prof.cols.filter(c => c[1] !== null);
@@ -362,7 +381,8 @@ function makeButterfly(tex, span) {
   const mat = new THREE.MeshLambertMaterial({ map: tex, alphaTest: 0.5, side: THREE.DoubleSide });
   const pl = new THREE.Group(), pr = new THREE.Group(); pl.add(new THREE.Mesh(mk(xL, xC, true), mat)); pr.add(new THREE.Mesh(mk(xC, xR, false), mat));
   const body = new THREE.Mesh(new THREE.CapsuleGeometry(span * 0.035, span * 0.28, 4, 8), new THREE.MeshLambertMaterial({ color: 0x3b2a1c })); body.rotation.x = Math.PI / 2;
-  const g = new THREE.Group(); g.add(pl, pr, body); return { g, pl, pr };
+  const tilt = new THREE.Group(); tilt.add(pl, pr, body); tilt.rotation.x = 0.9;   // step 4: tilted towards the viewer, so the open wings are seen from standing eye height
+  const g = new THREE.Group(); g.add(tilt); return { g, pl, pr };
 }
 function makeBird(tex, prof, lengthM) {
   const L = loftGeometry(prof.skylark, lengthM, 0.55);
@@ -386,7 +406,7 @@ function makeBird(tex, prof, lengthM) {
 // ---------------- new version: four more species at level 5 ----------------
 // Sizes: hare and whinchat life-size (hare about 50 cm long sitting, whinchat about 13 cm); the two insects enlarged like the
 // bee and butterfly (bumblebee 9 cm, grasshopper 10 cm) so they can be seen.
-const NEW5 = { hare: { len: 0.5 }, whinchat: { len: 0.135, perch: 0.6 }, grasshopper: { len: 0.1, h: 0.3 }, bumblebee: { len: 0.09, h: 0.42 } };   // base sizes; the insects are enlarged with SIZE_K
+const NEW5 = { hare: { len: 0.5 }, whinchat: { len: 0.135, perch: 0.62 }, grasshopper: { len: 0.1, h: 0.55 }, bumblebee: { len: 0.09, h: 0.6 } };   // base sizes; the insects are enlarged with SIZE_K
 function lambert(tex) { return new THREE.MeshLambertMaterial({ map: tex, side: THREE.DoubleSide, alphaTest: 0.5, transparent: false }); }
 function planeFrom(tex, iw, ih, a1, a2, b1, b2, L, z) {   // a flat picture part, placed so that 2 of its points land on 2 points of the body picture
   const B1 = imgToModel(L, b1[0], b1[1]), B2 = imgToModel(L, b2[0], b2[1]);
@@ -460,7 +480,8 @@ function buildNewSpecies(prof, tx, wingTex) {
       a.stemBase = world(az, d); const st = b.stem; st.position.add(a.home); root.add(st); a.stem = st; }
     else { const b = makeBumblebee(tx, prof, wingTex); a = { g: b.g, wings: b.wings, top: b.top }; a.home = world(az, d, NEW5.bumblebee.h); }
     const K = SIZE_K[5][kind] ?? 1;
-    if (K !== 1) { const sc = new THREE.Group(); [...a.g.children].forEach(c => sc.add(c)); sc.scale.setScalar(K); a.g.add(sc); a.top *= K; }   // whole animal enlarged
+    if (kind === 'whinchat') { a.bird.scale.setScalar(K); a.top = NEW5.whinchat.perch + 0.1 * K; }                                   // bird enlarged, perch unchanged
+    else if (K !== 1) { const sc = new THREE.Group(); [...a.g.children].forEach(c => sc.add(c)); sc.scale.setScalar(K); a.g.add(sc); a.top *= K; }   // whole animal enlarged
     a.kind = kind; a.lv = 5; a.g.position.copy(a.home); a.baseYaw = -az; a.g.rotation.y = a.baseYaw; a.yaw = a.baseYaw; a.targetYaw = a.baseYaw;
     a.presence = a.lv === PRODUCT_LEVEL ? 1 : 0; a.phase = rand2() * 10; a.timer = 2 + rand2() * 3; a.t = 0; a.action = 'idle'; root.add(a.g); animals.push(a);
   }
@@ -494,7 +515,7 @@ function buildAnimals(prof, tx, wingInfo) {
     const L = AR_LAYOUT[lv][kind], azL = L.az * D2R, dL = L.d;                      // position: AR layout
     if (kind === 'bird') {
       const yFeet = s.y + s.h / 2, { d } = fromImg(s.x, yFeet, 0), az = azL;
-      const len = s.h * (1312 / 1199) * 0.795 * d / F;                              // size: as approved in the 2D prototype (about 20 cm)
+      const len = s.h * (1312 / 1199) * 0.795 * d / F * (SIZE_K[lv]?.bird ?? 1);    // size: 2D prototype size (about 20 cm) × SIZE_K
       const b = makeBird(tx.lark, prof, len); b.g.position.copy(world(az, dL));
       const baseYaw = -az;                                                           // side-on to the viewer, head to the left as in the picture
       a = { kind, lv, g: b.g, inner: b.inner, home: b.g.position.clone(), baseYaw, yaw: baseYaw, targetYaw: baseYaw, timer: 2, action: 'idle', t: 0, top: len * 0.9 };
@@ -503,7 +524,7 @@ function buildAnimals(prof, tx, wingInfo) {
       const K = SIZE_K[lv]?.[kind] ?? 1;
       if (kind === 'bee') { const len = s.h * 1.5 * 0.5625 * d / F * K; const b = makeBee(tx.bee, tx.wing, wingInfo, prof, len); a = { kind, lv, g: b.g, wings: b.wings, top: len * 0.6 }; a.g.rotation.y = -az + (s.flip ? Math.PI : 0); }
       else { const span = s.h * 1.5 * 0.87 * d / F * K; const b = makeButterfly(tx.bfly, span); a = { kind, lv, g: b.g, pl: b.pl, pr: b.pr, top: span * 0.4 }; a.g.rotation.y = -az; }
-      a.home = world(az, dL, hI); a.g.position.copy(a.home);
+      a.home = world(az, dL, FLY_Y[kind]); a.g.position.copy(a.home);
     }
     a.presence = lv === PRODUCT_LEVEL ? 1 : 0; a.phase = rand() * 10; root.add(a.g); animals.push(a);
   }
@@ -638,7 +659,7 @@ function updateMarkers(cam, dt) {
       if (!hit) break; shift += bt - (hit.t - gap);
     }
     placed.push({ l: l0, r: r0, t: b.y - px / 2 - shift, b: b.y + px / 2 - shift });
-    if (m.fresh) { m.lift = shift; m.fresh = false; } else m.lift += (shift - m.lift) * Math.min(1, dt * 6);   // labels glide instead of jumping
+    if (m.fresh) { m.lift = shift; m.fresh = false; } else m.lift += (shift - m.lift) * Math.min(1, dt * (shift > m.lift ? 16 : 5));   // labels move out of the way quickly, glide back slowly
     if (m.hold && m.sx !== undefined) { placed[placed.length - 1] = { l: m.sx - px / 2, r: m.sx - px / 2 + m.w, t: m.sy - px / 2, b: m.sy + px / 2 }; }
     const x = m.hold && m.sx !== undefined ? m.sx : b.x, y = m.hold && m.sy !== undefined ? m.sy : b.y - m.lift; m.sx = x; m.sy = y;
     m.el.style.transform = `translate3d(${x.toFixed(1)}px, ${y.toFixed(1)}px, 0)`;
