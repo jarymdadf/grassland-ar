@@ -47,7 +47,8 @@ const fromImg = (x, y, h = 0) => ({ az: (x - IMG_W / 2) / F, d: F * (H0 - h) / (
 const world = (az, d, y = 0) => new THREE.Vector3(d * Math.sin(az), y, -d * Math.cos(az));
 // edges of the unmown vegetation, exactly as used to make the approved pictures (lines through the vanishing point)
 const lx = (y, xb) => 1327 + (xb - 1327) * (y - 297) / (723 - 297);
-const TALL = { 1: () => false, 3: (x, y) => y > Y0 && x > lx(y, 1880), 5: (x, y) => y > Y0 };   // new version: at level 5 the whole field is meadow
+const XB3 = 1190;   // new version: level-3 flower strip widened to the line drawn by the researcher (bottom-row x 1190 instead of 1880)
+const TALL = { 1: () => false, 3: (x, y) => y > Y0 && x > lx(y, XB3), 5: (x, y) => y > Y0 };   // new version: at level 5 the whole field is meadow
 const STRIP5 = (x, y) => y > Y0 && x > lx(y, 760);   // the original level-5 flower strip (kept for the original tall stems, so levels 1 and 3 stay identical)
 
 function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
@@ -253,6 +254,7 @@ function buildFlowers(list) {
     const hf = rr(...H[f.t]); if (f.y <= Y0 + 2) continue;
     const { az, d } = fromImg(f.x, f.y, hf); if (!(d > R_IN && d < VEG_MAX) || Math.abs(az) > 89 * D2R) continue;
     const size = THREE.MathUtils.clamp(f.w * d / F, 0.035, 0.07);
+    if (f.x > lx(f.y, XB3) && f.x <= lx(f.y, 1880) && !f.v3) { const h = Math.sin(f.x * 12.9898 + f.y * 78.233) * 43758.5453; f.v3 = (h - Math.floor(h)) < 0.47 ? 1 : 0; }   // widened level-3 strip
     const p = world(az, d), toViewer = Math.atan2(-p.x, -p.z);   // flower heads turned towards the viewer, as in the photo
     FL.push({ type: f.t, p, h: hf, size, ef: smooth(Math.max(0, Math.min(1, (90 * D2R - Math.abs(az)) / (10 * D2R)))), vis: [0, f.v3, 1], yaw: f.t === 'clover' ? rand() * 6.28 : toViewer + rr(-0.4, 0.4), tilt: f.t === 'daisy' ? rr(0.5, 0.95) : rr(0.15, 0.4), top: new THREE.Vector3() });
   }
@@ -315,13 +317,18 @@ const FLY_H = { bee: 0.4, butterfly: 0.42 };          // assumed height above gr
 // Checked against the edges of the unmown vegetation used for the pictures (the margin markers lie on the real margin edge).
 const AR_LAYOUT = {
   1: { mown: { az: 0, d: 2.5 }, margin: { az: 44, d: 2.8 }, hedge: { x: 1960, y: 225 } },
-  3: { margin: { az: 44, d: 2.8 }, butterfly: { az: 50, d: 3.4 }, flower: { az: 58, d: 2.3 }, bee: { az: 66, d: 1.8 }, hedge: { x: 1960, y: 225 } },
+  // new version, level 3: field margin on the new strip edge in the centre of the view; butterfly, bee and meadow flowers spread over the wider strip
+  3: { margin: { az: 17, d: 3.2 }, butterfly: { az: 34, d: 3.8 }, bee: { az: 47, d: 2.8 }, flower: { az: 60, d: 2.4 }, hedge: { x: 1960, y: 225 } },
   // new version: species spread to both sides (left: hare, bumblebee, grassland bird, whinchat, grasshopper; centre: field margin, bee,
   // flower strip; right: butterfly, meadow flowers, hedgerow)
-  5: { hare: { az: -58, d: 3.3 }, bumblebee: { az: -44, d: 1.7 }, bird: { az: -30, d: 3.0 }, whinchat: { az: -17, d: 2.3 }, grasshopper: { az: -9, d: 1.5 },
-       margin: { az: -5, d: 2.8 }, bee: { az: 10, d: 1.7 }, strip: { az: 15, d: 3.4 }, butterfly: { az: 27, d: 2.6 }, flower: { az: 38, d: 2.0 }, hedge: { x: 1960, y: 225 } }
+  // species further back (27.11.2026): insects 2.6–3.8 m (enlarged in proportion, see SIZE_K), birds and hare 3.6–4 m (life size)
+  5: { hare: { az: -58, d: 4.0 }, bumblebee: { az: -44, d: 2.8 }, bird: { az: -30, d: 4.0 }, whinchat: { az: -17, d: 3.6 }, grasshopper: { az: -9, d: 2.6 },
+       margin: { az: -5, d: 2.8 }, bee: { az: 10, d: 2.8 }, strip: { az: 15, d: 3.4 }, butterfly: { az: 27, d: 3.8 }, flower: { az: 38, d: 2.0 }, hedge: { x: 1960, y: 225 } }
 };
 const MARKER_H = 0.7;                      // markers float this high above the ground (m), with a thin line down to the object
+// new version: the insects were moved further back and enlarged by the same factor, so they look as big on screen as before
+// (factor = new distance / previous distance). Birds and hare keep their life size.
+const SIZE_K = { 3: { bee: 2.8 / 1.8, butterfly: 3.8 / 3.4 }, 5: { bee: 2.8 / 1.7, butterfly: 3.8 / 2.6, bumblebee: 2.8 / 1.7, grasshopper: 2.6 / 1.5 } };
 
 function loftGeometry(prof, lengthM, depthRatio) {   // rounded 3D body from the outline of the side-view picture, coloured by that picture
   const W = prof.w, H = prof.h; let cols = prof.cols.filter(c => c[1] !== null);
@@ -379,7 +386,7 @@ function makeBird(tex, prof, lengthM) {
 // ---------------- new version: four more species at level 5 ----------------
 // Sizes: hare and whinchat life-size (hare about 50 cm long sitting, whinchat about 13 cm); the two insects enlarged like the
 // bee and butterfly (bumblebee 9 cm, grasshopper 10 cm) so they can be seen.
-const NEW5 = { hare: { len: 0.5 }, whinchat: { len: 0.135, perch: 0.6 }, grasshopper: { len: 0.1, h: 0.3 }, bumblebee: { len: 0.09, h: 0.42 } };
+const NEW5 = { hare: { len: 0.5 }, whinchat: { len: 0.135, perch: 0.6 }, grasshopper: { len: 0.1, h: 0.3 }, bumblebee: { len: 0.09, h: 0.42 } };   // base sizes; the insects are enlarged with SIZE_K
 function lambert(tex) { return new THREE.MeshLambertMaterial({ map: tex, side: THREE.DoubleSide, alphaTest: 0.5, transparent: false }); }
 function planeFrom(tex, iw, ih, a1, a2, b1, b2, L, z) {   // a flat picture part, placed so that 2 of its points land on 2 points of the body picture
   const B1 = imgToModel(L, b1[0], b1[1]), B2 = imgToModel(L, b2[0], b2[1]);
@@ -452,6 +459,8 @@ function buildNewSpecies(prof, tx, wingTex) {
     else if (kind === 'grasshopper') { const b = makeGrasshopper(tx, prof); a = { g: b.g, body: b.body, legs: b.legs, top: b.top }; a.home = world(az, d, NEW5.grasshopper.h);
       a.stemBase = world(az, d); const st = b.stem; st.position.add(a.home); root.add(st); a.stem = st; }
     else { const b = makeBumblebee(tx, prof, wingTex); a = { g: b.g, wings: b.wings, top: b.top }; a.home = world(az, d, NEW5.bumblebee.h); }
+    const K = SIZE_K[5][kind] ?? 1;
+    if (K !== 1) { const sc = new THREE.Group(); [...a.g.children].forEach(c => sc.add(c)); sc.scale.setScalar(K); a.g.add(sc); a.top *= K; }   // whole animal enlarged
     a.kind = kind; a.lv = 5; a.g.position.copy(a.home); a.baseYaw = -az; a.g.rotation.y = a.baseYaw; a.yaw = a.baseYaw; a.targetYaw = a.baseYaw;
     a.presence = a.lv === PRODUCT_LEVEL ? 1 : 0; a.phase = rand2() * 10; a.timer = 2 + rand2() * 3; a.t = 0; a.action = 'idle'; root.add(a.g); animals.push(a);
   }
@@ -491,8 +500,9 @@ function buildAnimals(prof, tx, wingInfo) {
       a = { kind, lv, g: b.g, inner: b.inner, home: b.g.position.clone(), baseYaw, yaw: baseYaw, targetYaw: baseYaw, timer: 2, action: 'idle', t: 0, top: len * 0.9 };
     } else {
       const hI = FLY_H[kind], { d } = fromImg(s.x, s.y, hI), az = azL;
-      if (kind === 'bee') { const len = s.h * 1.5 * 0.5625 * d / F; const b = makeBee(tx.bee, tx.wing, wingInfo, prof, len); a = { kind, lv, g: b.g, wings: b.wings, top: len * 0.6 }; a.g.rotation.y = -az + (s.flip ? Math.PI : 0); }
-      else { const span = s.h * 1.5 * 0.87 * d / F; const b = makeButterfly(tx.bfly, span); a = { kind, lv, g: b.g, pl: b.pl, pr: b.pr, top: span * 0.4 }; a.g.rotation.y = -az; }
+      const K = SIZE_K[lv]?.[kind] ?? 1;
+      if (kind === 'bee') { const len = s.h * 1.5 * 0.5625 * d / F * K; const b = makeBee(tx.bee, tx.wing, wingInfo, prof, len); a = { kind, lv, g: b.g, wings: b.wings, top: len * 0.6 }; a.g.rotation.y = -az + (s.flip ? Math.PI : 0); }
+      else { const span = s.h * 1.5 * 0.87 * d / F * K; const b = makeButterfly(tx.bfly, span); a = { kind, lv, g: b.g, pl: b.pl, pr: b.pr, top: span * 0.4 }; a.g.rotation.y = -az; }
       a.home = world(az, dL, hI); a.g.position.copy(a.home);
     }
     a.presence = lv === PRODUCT_LEVEL ? 1 : 0; a.phase = rand() * 10; root.add(a.g); animals.push(a);
@@ -501,7 +511,7 @@ function buildAnimals(prof, tx, wingInfo) {
 function updateAnimals(dt, time) {
   for (const a of animals) {
     const want = a.lv === curLevel ? 1 : 0; a.presence += (want - a.presence) * Math.min(1, dt * 3);
-    a.g.visible = a.presence > 0.02; a.g.scale.setScalar(Math.max(0.001, a.presence)); if (!a.g.visible) continue;
+    a.g.visible = a.presence > 0.02; a.g.scale.setScalar(Math.max(0.001, a.presence)); if (a.stem) a.stem.visible = a.g.visible; if (!a.g.visible) continue;
     const t = time + a.phase;
     if (NEW5[a.kind]) { updateNewSpecies(a, dt, t); continue; }
     if (a.kind === 'bee') {            // hovers around its spot among the flowers
