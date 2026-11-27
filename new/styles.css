@@ -543,3 +543,27 @@ body.debug .exploration-status { top: calc(max(10px, env(safe-area-inset-top)) +
 .mk.is-seen .mk-check { display: inline; }
 .mk.is-active { background: #183e2a; color: #f4f7ee; }
 .mk.is-active .mk-check { color: #bfe0a8; }
+
+/* ================= new version: biodiversity levels coloured red (1) to green (5) ================= */
+/* Same five colours as the biodiversity label graphic (decision 27.11.2026): own colours in the Nutri-Score style, not a copy. */
+:root { --bio-1: #D7301F; --bio-2: #F07F21; --bio-3: #F4C430; --bio-4: #8DC63F; --bio-5: #1E8C45; }
+.level-button--1 { background: var(--bio-1); color: #fff; }
+.level-button--2 { background: var(--bio-2); color: #fff; }
+.level-button--3 { background: var(--bio-3); color: #3d2e00; }
+.level-button--4 { background: var(--bio-4); color: #1f3a0e; }
+.level-button--5 { background: var(--bio-5); color: #fff; }
+.level-button[disabled] { opacity: .45; filter: none; }                 /* levels 2 and 4: colour visible, but faded (cannot be selected) */
+.level-button.is-active { border-color: #1b1b1b; box-shadow: 0 0 0 2px rgba(255,255,255,.9) inset, 0 7px 16px rgba(0,0,0,.28); }
+.level-button .tap-dot { background: currentColor; opacity: .7; }
+/* badge: ring and number in the colour of the level shown (number slightly darker where needed for reading) */
+.certification-badge[data-level="1"] { --lv-ring: var(--bio-1); --lv-score: #c22a1a; --lv-fill: rgba(253,238,235,.96); }
+.certification-badge[data-level="3"] { --lv-ring: var(--bio-3); --lv-score: #a87e00; --lv-fill: rgba(254,248,226,.96); }
+.certification-badge[data-level="5"] { --lv-ring: var(--bio-5); --lv-score: var(--bio-5); --lv-fill: rgba(232,245,236,.96); }
+.certification-badge .badge-ring { border-width: 4px; box-shadow: none; }
+
+/* new version: no "This product" line under the badge (the "This product" tag stays on level 5 in the level bar) */
+.product-pill { display: none !important; }
+/* badge text fits inside the thicker coloured ring on phones ("Level 5 · Very high") */
+.certification-badge .badge-ring { padding: 3px; }
+.certification-badge .badge-level { font-size: 6.2px; letter-spacing: -.02em; }
+@media (min-height: 600px) { .certification-badge .badge-level { font-size: 8.4px; } }

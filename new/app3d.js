@@ -33,7 +33,7 @@ const R_BG = 25;                          // distance of the backdrop (m); groun
 const R_IN = 0.55, VEG_MAX = 8;           // 3D flowers from 0.55 m to 8 m (all flowers detected in the photo lie within 8 m)
 const GRASS_MAX = 16;                     // 3D grass from 0.55 m to 16 m; beyond that the (sharpened) photo ground
 const HR_ROWS = 420;                      // top rows of the pictures (sky, horizon, far field) also loaded 3x sharper (AI super-resolution)
-const PRODUCT_LEVEL = 3, LV = [1, 3, 5];
+const PRODUCT_LEVEL = 5, LV = [1, 3, 5];   // new version: the product (carton) is level 5 (decision 27.11.2026)
 const SEED = 20261110;                    // fixed seed: every participant sees exactly the same scene
 const START_X = 1450;                     // same start view as the 2D prototype
 
@@ -316,8 +316,10 @@ const FLY_H = { bee: 0.4, butterfly: 0.42 };          // assumed height above gr
 const AR_LAYOUT = {
   1: { mown: { az: 0, d: 2.5 }, margin: { az: 44, d: 2.8 }, hedge: { x: 1960, y: 225 } },
   3: { margin: { az: 44, d: 2.8 }, butterfly: { az: 50, d: 3.4 }, flower: { az: 58, d: 2.3 }, bee: { az: 66, d: 1.8 }, hedge: { x: 1960, y: 225 } },
-  5: { hare: { az: -54, d: 3.3 }, bird: { az: -30, d: 3.0 }, whinchat: { az: -17, d: 2.3 }, margin: { az: -5, d: 2.8 }, bee: { az: 10, d: 1.7 }, strip: { az: 15, d: 3.4 },
-       grasshopper: { az: 26, d: 1.5 }, flower: { az: 38, d: 2.0 }, bumblebee: { az: 46, d: 1.6 }, butterfly: { az: 55, d: 2.6 }, hedge: { x: 1960, y: 225 } }
+  // new version: species spread to both sides (left: hare, bumblebee, grassland bird, whinchat, grasshopper; centre: field margin, bee,
+  // flower strip; right: butterfly, meadow flowers, hedgerow)
+  5: { hare: { az: -58, d: 3.3 }, bumblebee: { az: -44, d: 1.7 }, bird: { az: -30, d: 3.0 }, whinchat: { az: -17, d: 2.3 }, grasshopper: { az: -9, d: 1.5 },
+       margin: { az: -5, d: 2.8 }, bee: { az: 10, d: 1.7 }, strip: { az: 15, d: 3.4 }, butterfly: { az: 27, d: 2.6 }, flower: { az: 38, d: 2.0 }, hedge: { x: 1960, y: 225 } }
 };
 const MARKER_H = 0.7;                      // markers float this high above the ground (m), with a thin line down to the object
 
@@ -451,7 +453,7 @@ function buildNewSpecies(prof, tx, wingTex) {
       a.stemBase = world(az, d); const st = b.stem; st.position.add(a.home); root.add(st); a.stem = st; }
     else { const b = makeBumblebee(tx, prof, wingTex); a = { g: b.g, wings: b.wings, top: b.top }; a.home = world(az, d, NEW5.bumblebee.h); }
     a.kind = kind; a.lv = 5; a.g.position.copy(a.home); a.baseYaw = -az; a.g.rotation.y = a.baseYaw; a.yaw = a.baseYaw; a.targetYaw = a.baseYaw;
-    a.presence = 0; a.phase = rand2() * 10; a.timer = 2 + rand2() * 3; a.t = 0; a.action = 'idle'; root.add(a.g); animals.push(a);
+    a.presence = a.lv === PRODUCT_LEVEL ? 1 : 0; a.phase = rand2() * 10; a.timer = 2 + rand2() * 3; a.t = 0; a.action = 'idle'; root.add(a.g); animals.push(a);
   }
 }
 function updateNewSpecies(a, dt, t) {
@@ -661,7 +663,7 @@ function setLevel(level, initial = false) {
   const isProduct = level === PRODUCT_LEVEL;
   productPill.textContent = isProduct ? `This product · Level ${PRODUCT_LEVEL}` : `Showing level ${level} · This product is level ${PRODUCT_LEVEL}`;
   productPill.classList.toggle('is-comparison', !isProduct);
-  levelLine.innerHTML = `<strong>Level ${level}:</strong> ${levels[level].line}` + (isProduct ? '' : ' <span class="cmp">(comparison)</span>');
+  levelLine.innerHTML = `<strong>Level ${level}:</strong> ${levels[level].line}`;   // new version: no "(comparison)" note
   document.querySelectorAll('.level-button:not([disabled])').forEach(btn => { const a = Number(btn.dataset.level) === level; btn.classList.toggle('is-active', a); btn.setAttribute('aria-pressed', String(a)); });
   showLevelLine();
   updateCounter(); closeCard();
