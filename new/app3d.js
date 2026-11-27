@@ -347,7 +347,9 @@ const MARKER_H = 0.7;                      // markers float this high above the 
 // step 4 (27.11.2026): all species bigger again, so they are clearly visible (sizes about: bee 17 cm, bumblebee 21 cm, grasshopper 24 cm,
 // butterfly 30 cm wingspan, grassland bird 31 cm, whinchat 20 cm, hare 70 cm) – all larger than life.
 const SIZE_K = { 3: { bee: 2.8 / 1.8 * 1.4, butterfly: 3.8 / 3.4 * 1.62 },
-  5: { bee: 2.8 / 1.7 * 1.4, butterfly: 3.8 / 2.6 * 1.15, bumblebee: 2.8 / 1.7 * 1.42, grasshopper: 2.6 / 1.5 * 1.39, bird: 1.5, whinchat: 1.5, hare: 1.4 } };
+  // step 5 (27.11.2026): brown hare and whinchat back to real size (they looked oddly big); bumblebee on the same scale as the bee next to it,
+  // slightly bigger than the bee, as in real life (about 1.1 × the bee's length)
+  5: { bee: 2.8 / 1.7 * 1.4, butterfly: 3.8 / 2.6 * 1.15, bumblebee: 0.19 / 0.09, grasshopper: 2.6 / 1.5 * 1.39, bird: 1.5, whinchat: 1, hare: 1 } };
 
 function loftGeometry(prof, lengthM, depthRatio) {   // rounded 3D body from the outline of the side-view picture, coloured by that picture
   const W = prof.w, H = prof.h; let cols = prof.cols.filter(c => c[1] !== null);
